@@ -12,10 +12,7 @@ import type {
   ReferenceImageInput,
   ServiceTier,
 } from "./nanoBanana";
-import {
-  ESTIMATED_OUTPUT_TOKENS_PER_IMAGE,
-  googleImageSize,
-} from "./nanoBanana";
+import { ESTIMATED_OUTPUT_TOKENS_PER_IMAGE } from "./nanoBanana";
 import {
   computeTokenCostSummary,
   GoogleTokenUsage,
@@ -131,7 +128,7 @@ export async function runGoogleGeneration(
       generationConfig: {
         imageConfig: {
           aspectRatio: params.aspect_ratio,
-          imageSize: googleImageSize(params.resolution),
+          imageSize: params.resolution,
         },
         responseModalities: ["IMAGE", "TEXT"],
       },

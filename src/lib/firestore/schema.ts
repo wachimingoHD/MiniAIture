@@ -12,9 +12,9 @@ export type SubscriptionStatus = "active" | "canceled" | "past_due";
 
 export interface UserCredits {
   daily: number;
-  dailyResetAt: number; // unix ms
+  dailyResetAt: string; // ISO string
   monthly: number;
-  monthlyResetAt: number; // unix ms
+  monthlyResetAt: string; // ISO string
 }
 
 export interface UserAffiliate {
@@ -32,9 +32,9 @@ export interface UserStats {
 }
 
 export interface ImageEntry {
-  url: string; // R2 public URL
+  url: string; // Firebase Storage public URL
   prompt: string;
-  createdAt: number;
+  createdAt: string; // ISO string
   provider: "google" | "fal";
 }
 
@@ -44,8 +44,8 @@ export interface UserDocument {
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;
   subscriptionStatus?: SubscriptionStatus;
-  subscriptionStart?: number;
-  subscriptionEnd?: number;
+  subscriptionStart?: string;
+  subscriptionEnd?: string;
   credits: UserCredits;
   affiliate?: UserAffiliate;
   stats: UserStats;
@@ -71,17 +71,23 @@ export function buildInitialUserDocument(args: {
   email: string;
   plan?: Plan;
   referredBy?: string;
+  freeDailyCredits?: number;
+  proDailyCredits?: number;
+  proMonthlyCredits?: number;
 }): UserDocument {
   const now = Date.now();
   const isPro = args.plan === "pro";
+  const freeDailyCredits = args.freeDailyCredits ?? FREE_DAILY_CREDITS;
+  const proDailyCredits = args.proDailyCredits ?? PRO_DAILY_CREDITS_DEFAULT;
+  const proMonthlyCredits = args.proMonthlyCredits ?? PRO_MONTHLY_POOL_DEFAULT;
   return {
     email: args.email,
     plan: args.plan ?? "free",
     credits: {
-      daily: isPro ? PRO_DAILY_CREDITS_DEFAULT : FREE_DAILY_CREDITS,
-      dailyResetAt: now + 24 * 60 * 60 * 1000,
-      monthly: isPro ? PRO_MONTHLY_POOL_DEFAULT : 0,
-      monthlyResetAt: now + 30 * 24 * 60 * 60 * 1000,
+      daily: isPro ? proDailyCredits : freeDailyCredits,
+      dailyResetAt: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
+      monthly: isPro ? proMonthlyCredits : 0,
+      monthlyResetAt: new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString(),
     },
     affiliate: args.referredBy
       ? { referredBy: args.referredBy, discountActive: true }

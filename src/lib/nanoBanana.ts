@@ -40,7 +40,7 @@ export const DEFAULT_NANO_BANANA_PARAMS: NanoBananaParams = {
   num_images: 1,
   flex_mode: false,
   enable_google_search: false,
-  aspect_ratio: "1:1",
+  aspect_ratio: "16:9",
   resolution: "1K",
   upscale_enabled: false,
   upscale_resolution: "2K",
@@ -177,6 +177,12 @@ export interface GenerateResponse {
   startedAt: string;
   endedAt: string;
   createdAt: string;
+  userPlan?: "free" | "pro";
+  creditsRemaining?: {
+    daily: number;
+    monthly: number;
+  };
+  watermarkApplied?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,7 +218,7 @@ export function validateGenerationRequest(
   const enable_google_search = Boolean(paramsRaw.enable_google_search);
   const upscale_enabled = Boolean(paramsRaw.upscale_enabled);
 
-  const aspect_ratio = enumOrDefault(paramsRaw.aspect_ratio, ASPECT_RATIOS, "1:1");
+  const aspect_ratio = enumOrDefault(paramsRaw.aspect_ratio, ASPECT_RATIOS, "16:9");
   const resolution = enumOrDefault(paramsRaw.resolution, RESOLUTIONS, "1K");
   const upscale_resolution = enumOrDefault(
     paramsRaw.upscale_resolution,
@@ -236,12 +242,21 @@ export function validateGenerationRequest(
     const data = typeof ref.data === "string" ? ref.data : "";
     const mimeType = typeof ref.mimeType === "string" ? ref.mimeType : "";
     if (!data || !mimeType.startsWith("image/")) continue;
-    const size = typeof ref.size === "number" ? ref.size : approxBase64Size(data);
+    // Always derive size from the actual base64 payload — the client-supplied
+    // `size` is untrusted and was previously used to bypass the total-bytes cap.
+    const size = approxBase64Size(data);
+    if (size > MAX_REFERENCE_IMAGES_TOTAL_BYTES) {
+      errors.push({
+        field: "referenceImages",
+        message: `Single reference image exceeds ${MAX_REFERENCE_IMAGES_TOTAL_BYTES / 1024 / 1024}MB`,
+      });
+      continue;
+    }
     totalBytes += size;
     referenceImages.push({
       data,
       mimeType,
-      filename: typeof ref.filename === "string" ? ref.filename : undefined,
+      filename: typeof ref.filename === "string" ? ref.filename.slice(0, 256) : undefined,
       size,
     });
   }
@@ -306,17 +321,23 @@ export function shouldFallbackToFal(failure: FailureDetail): boolean {
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// Resolution -> imageSize mapping for Google
-// ---------------------------------------------------------------------------
-
-export function googleImageSize(res: Resolution): "512" | "1K" | "2K" | "4K" {
-  return res;
-}
-
 // fal endpoint expects the literal "0.5K" instead of "512"
 export function falResolutionToken(res: Resolution): string {
   return res === "512" ? "0.5K" : res;
+}
+
+// Derives the user-facing resolution from the validated technical params.
+// Used for credit pricing — must NEVER be read directly from the request body,
+// otherwise a client can decouple "what they actually generate" from "what we
+// charge them for".
+export function deriveUserFacingResolution(params: NanoBananaParams): Resolution {
+  if (
+    params.upscale_enabled &&
+    upscaleIsHigherThanBase(params.resolution, params.upscale_resolution)
+  ) {
+    return params.upscale_resolution;
+  }
+  return params.resolution;
 }
 
 // ---------------------------------------------------------------------------

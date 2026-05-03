@@ -1,5 +1,197 @@
 # DocMiniAItures - Estado actual del proyecto
 
+## 0.0) Hardening de seguridad (2026-05-03, supersede partes en conflicto de 0, 0.7, 8 y 9)
+
+Pase de auditoría sobre el código generado por GPT. No cambia features de producto; cierra vectores de abuso monetario, refuerza Stripe y endurece la superficie de API. Estado verificado: `npm run lint` OK, `npm run test` OK (16/16), `npm run build` OK.
+
+### 0.0.1 Bypass crítico de pricing cerrado
+- `POST /api/generate` ya no lee `userFacingResolution` ni `lowPriorityMode` del cuerpo del request. Ambos se derivan server-side desde los `params` validados (helper `deriveUserFacingResolution` en `src/lib/nanoBanana.ts`).
+- Antes del pase, un usuario Pro podía generar 4K en standard tier pagando 75 créditos (50% del coste real) decoplando lo que generaba de lo que se le cobraba.
+
+### 0.0.2 Stripe — idempotencia y reuso de customer
+- Webhook `POST /api/webhooks/stripe` ahora deduplica por `event.id` mediante un lock atómico en la nueva colección `stripe_processed_events` (vía `doc.create()`). En caso de fallo del handler, libera el lock para que Stripe reintente desde estado limpio.
+- `POST /api/billing/checkout` reutiliza `stripeCustomerId` cuando existe en `users/{uid}` en lugar de crear un nuevo Customer en cada intento.
+- `POST /api/billing/checkout` rechaza con `409` cuando `plan === "pro" && subscriptionStatus === "active"`, evitando dobles suscripciones del mismo usuario.
+- Webhook hace cross-check de `metadata.uid` contra `stripeCustomerId` ya enlazado: si no coinciden, rehúsa la mutación y loguea (defensa en profundidad ante manipulación de metadata).
+
+### 0.0.3 Validación reforzada en `/api/generate`
+- `validateGenerationRequest` siempre computa el tamaño de cada imagen de referencia desde el base64 real, ignorando `ref.size` del cliente (era saltable enviando `size: 0`).
+- Cap por imagen además del cap total.
+- `filename` truncado a 256 chars.
+
+### 0.0.4 Endpoint `/api/estimate-cost` cerrado al público
+- Requiere Bearer token (Firebase ID token verificado).
+- Cache LRU 30s por `uid + sha256(body)` para absorber el debounce del frontend (cada keystroke + 500ms) sin re-disparar `countTokens` de Gemini.
+- Frontend (`src/app/page.tsx`) no llama al endpoint si no hay sesión y muestra "Sign in to see cost estimates".
+
+### 0.0.5 Auth — revocación
+- `verifyIdToken` ahora invoca `verifyIdToken(token, true)` (Firebase Admin) para detectar tokens revocados o usuarios deshabilitados. Coste: una llamada extra a Firebase por request autenticado.
+
+### 0.0.6 Detección de IP cliente más resistente a spoof
+- `getClientIp` prioriza headers que el edge sobrescribe (`x-vercel-forwarded-for`, `cf-connecting-ip`, `x-real-ip`) antes del header configurable `x-forwarded-for`. En despliegues sobre Vercel/Cloudflare la IP usada para el rate-limit Free no es manipulable por el cliente.
+
+### 0.0.7 SSRF mitigada en post-proceso fal
+- `fetchAsBase64` (en `src/lib/fal.ts`) restringe los hosts permitidos cuando fal devuelve URL en lugar de inline base64: solo `*.fal.media`, `*.fal.ai`, `*.fal.run` sobre HTTPS.
+- Cap de 25 MB en bytes descargados (limita blast radius si fal devuelve contenido inesperado).
+
+### 0.0.8 Concurrencia en perfil de usuario
+- `getOrCreateUserDocument` envuelto en `runTransaction` (evita race en first-login concurrente).
+- `GET /api/user/credits` aplica el reset diario en transacción cuando está vencido (no toma lock en el path de solo lectura).
+
+### 0.0.9 Affiliate code saneado
+- `sanitizeAffiliateCode` en `src/lib/stripe/client.ts`: máx 64 chars, regex `[a-zA-Z0-9_-]+`. Códigos que no cumplen se descartan silenciosamente.
+
+### 0.0.10 Headers HTTP adicionales
+Añadidos a `next.config.ts` para todas las respuestas:
+- `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(), browsing-topics=()`
+- `X-DNS-Prefetch-Control: off`
+- (CSP intencionalmente NO añadida en este pase: requiere tuning fino con dominios de Firebase y Stripe; pendiente de pase dedicado.)
+
+### 0.0.11 Redacción de errores en producción
+Helper `safeErrorMessage` en `src/lib/server/errors.ts`. En `NODE_ENV=production` los siguientes endpoints devuelven un fallback genérico en `detail` en lugar del `err.message` interno:
+- `POST /api/generate`
+- `POST /api/billing/checkout`
+- `POST /api/webhooks/stripe`
+
+### 0.0.12 Limpieza de código muerto
+- Eliminados `AUTH_BYPASS_UIDS` (con `getBypassAuthIds` y `parseCsv`) y `ALLOW_MOCK_STRIPE_WEBHOOK_IN_DEV` de `src/lib/config/runtime.ts`. Estaban declarados y nunca se usaban.
+- Eliminado `googleImageSize` de `src/lib/nanoBanana.ts` (era identidad sobre `Resolution`); inlinada la referencia en `src/lib/google.ts`.
+
+### 0.0.13 Nuevas colecciones Firestore
+- `stripe_processed_events`: documentos keyed por `event.id` con `{ type, receivedAt, completedAt? }`. Sirve como lock idempotente para webhooks. No tiene TTL automático en este pase; conviene definir política de retención (sugerencia: TTL de 90 días vía Firestore TTL config).
+
+### 0.0.14 Tests
+- Añadido test de dedup en `src/app/api/webhooks/stripe/route.test.ts` (`create()` lanza → respuesta `deduplicated: true`).
+- Mocks del webhook ampliados para soportar la colección `stripe_processed_events` y `customerMatches` (lectura de `ref.get()`).
+
+---
+
+## 0) Actualización canónica (2026-05-03, Phase 2 Core monetizable)
+
+Esta sección **supersede** cualquier apartado anterior que entre en conflicto (especialmente secciones 11, 16, 17, 22, 23 y 25).
+
+### 0.1 Estado real verificado
+
+- `npm run lint`: OK
+- `npm run test`: OK (suite unitaria + smoke API)
+- `npm run build`: OK
+
+### 0.2 Lo que ya está implementado
+
+- Auth real con Firebase:
+  - cliente (`sign in` + ID token),
+  - servidor (`verifyIdToken` con Firebase Admin).
+- Firestore operativo para identidad, créditos, plan y estados de suscripción.
+- Gating server-side en `POST /api/generate`:
+  - auth obligatoria,
+  - validaciones de plan Free/Pro,
+  - débito atómico de créditos,
+  - reembolso explícito ante fallo de generación,
+  - errores de negocio (`401`, `402`, `429` y validaciones de plan).
+- Stripe core monetizable:
+  - `POST /api/billing/checkout`,
+  - `GET /api/billing/status`,
+  - `POST /api/webhooks/stripe` con verificación de firma y mutaciones en Firestore.
+- Persistencia de galería Pro en servidor:
+  - guardado de imágenes en **Firebase Storage**,
+  - índice `gallery` en `users/{uid}` con política FIFO (máx. 200).
+- Rate-limit mínimo para Free por IP (1 generación/día).
+- App Check server-side activable por entorno (toggle).
+- Logging estructurado para trazabilidad de créditos/webhooks/generación.
+
+### 0.3 Cambios funcionales de frontend ya activos
+
+- Página `/pricing` implementada.
+- Flujo de suscripción desde botón de pricing hacia Stripe Checkout.
+- Estado de suscripción reflejado en UI según `/api/billing/status`.
+- Página `/gallery` para usuarios Pro con consulta de imágenes generadas.
+- **Local history eliminado**: ya no se usa IndexedDB/localStorage para historial.
+
+### 0.4 Decisión de almacenamiento (actual)
+
+- Se descartó Cloudflare R2 para el sprint actual.
+- El almacenamiento vigente de imágenes Pro es **Firebase Storage**.
+
+### 0.5 Endpoints vigentes de negocio
+
+- `POST /api/generate`
+- `GET /api/user/credits`
+- `POST /api/billing/checkout`
+- `GET /api/billing/status`
+- `POST /api/webhooks/stripe`
+- `GET /api/gallery`
+
+### 0.6 Notas de alcance
+
+- Afiliados siguen fuera de sprint 1 (schema/preparación, sin activación comercial completa).
+- Política de retención/borrado de imágenes tras cancelación Pro: pendiente de definición de negocio.
+
+### 0.7 Actualizacion adicional (2026-05-03, supersede detalles anteriores en conflicto)
+
+#### Frontend y UX (estado real actual)
+- `DEFAULT_NANO_BANANA_PARAMS.aspect_ratio` ahora es `16:9`.
+- El panel de usuario final fue separado del panel de desarrollador:
+  - `User options` controla `Low priority mode` y resolucion orientada a negocio.
+  - `Developer parameters` es desplegable e incluye `aspect_ratio` y vista JSON de params efectivos.
+- `Reference images` esta debajo de `Prompt`.
+- El boton de generacion muestra coste de creditos y saldo (`Daily/Monthly`).
+- Se restauro la UI visual de `Estimated cost` (tarjetas) y de `Result` (preview de imagenes + descarga + metadata).
+- En cabecera de la home se muestra de nuevo: email, plan y creditos del usuario autenticado.
+
+#### Reglas de plan en UI de resolucion
+- Free:
+  - resolucion bloqueada en `512`.
+  - opciones superiores marcadas como `Pro feature`.
+  - `Low priority` forzado (sin descuento de creditos adicional por esta regla).
+- Pro:
+  - no se muestra la opcion `512` en selector principal.
+  - puede activar/desactivar `Low priority` con descuento de creditos.
+
+#### Mapeo funcional de resoluciones (UI -> params tecnicos)
+- `512` -> base `512`, sin upscale.
+- `1K` -> base `512` + upscale `1K`.
+- `2K` -> base `1K` + upscale `2K`.
+- `4K` -> base `1K` + upscale `4K`.
+
+#### Pricing y Gallery
+- `/pricing` ya no permite checkout cuando la suscripcion Pro ya esta activa/trialing:
+  - boton deshabilitado.
+  - texto `Already acquired`.
+- `/gallery` permite abrir cada entrada en modal con imagen grande, prompt completo, provider y fecha.
+
+#### Simulacion de desarrollador
+- `POST /api/generate` soporta modo simulacion en entorno no productivo:
+  - `success`: consume creditos y registra stats sin generar imagen real.
+  - `reject`: simula rechazo y ejecuta reembolso.
+
+#### Creditos y pricing dinamico
+- El coste de generacion ya no es fijo en runtime para todas las variantes de UI.
+- Formula activa:
+  - base: 100 creditos.
+  - `512`: -25%.
+  - `1K`: sin cambio.
+  - `2K`: +25%.
+  - `4K`: +50%.
+  - `low priority` en Pro: -25%.
+
+#### Fechas en Firestore (normalizacion completa)
+- Se unifico el formato de fechas a ISO string en documentos de negocio:
+  - `credits.dailyResetAt`.
+  - `credits.monthlyResetAt`.
+  - `subscriptionStart`.
+  - `subscriptionEnd`.
+  - `gallery[].createdAt`.
+- Se elimina el esquema dual anterior en nuevas escrituras.
+- `GET /api/gallery` normaliza entradas legacy al vuelo para compatibilidad temporal y orden correcto.
+
+#### Storage, stats y calidad
+- Persistencia Pro confirmada en Firebase Storage + indice `gallery` en Firestore.
+- Ajustado registro de stats para evitar desalineacion de `falGenerations` en fallback/proveedor efectivo.
+- Estado verificado:
+  - `npm run lint`: OK
+  - `npm run test`: OK
+  - `npm run build`: OK
 ## 1) Visión general del producto
 
 MiniAItures es una plataforma web de generación de miniaturas para YouTube con IA, construida en Next.js. El usuario introduce un prompt (y opcionalmente imágenes de referencia) y el sistema genera una imagen optimizada para miniatura usando Nano Banana 2 vía Gemini API, con upscaling posterior opcional vía fal.ai.
@@ -916,3 +1108,4 @@ Si falla la generación:
 | 4 | Pool mensual Pro: 2.000 vs 3.000 créditos | Implementación del sistema de créditos |
 | 5 | Caducidad del programa de afiliados: permanente sin condiciones vs condicionado | Contratos con afiliados, implementación en Stripe |
 | 6 | Política de retención de imágenes en R2 al cancelar suscripción Pro | UX de cancelación, costes de almacenamiento a largo plazo |
+

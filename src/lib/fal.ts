@@ -239,11 +239,43 @@ async function collectFalImages(items: FalImageResponse[]): Promise<GeneratedIma
   return out;
 }
 
+// Hard cap on what we'll pull down from a fal-supplied URL. The actual
+// generated thumbnails are well under this; the cap exists to bound the blast
+// radius if fal ever returns an unexpected URL.
+const MAX_FAL_FETCH_BYTES = 25 * 1024 * 1024;
+
+// Allowlist of hosts we will follow when fal returns an image URL instead of
+// inline base64. Without this, a compromised/misbehaving fal response could
+// turn this fetcher into an SSRF primitive (e.g. cloud metadata endpoints).
+function isFalAllowedUrl(rawUrl: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") return false;
+  const host = parsed.hostname.toLowerCase();
+  return (
+    host === "fal.media" ||
+    host === "fal.ai" ||
+    host === "fal.run" ||
+    host.endsWith(".fal.media") ||
+    host.endsWith(".fal.ai") ||
+    host.endsWith(".fal.run")
+  );
+}
+
 async function fetchAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
+  if (!isFalAllowedUrl(url)) return null;
   try {
     const res = await fetch(url);
     if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
+    const declaredLength = Number(res.headers.get("content-length") ?? "0");
+    if (declaredLength > MAX_FAL_FETCH_BYTES) return null;
+    const arrayBuffer = await res.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_FAL_FETCH_BYTES) return null;
+    const buf = Buffer.from(arrayBuffer);
     const mimeType = res.headers.get("content-type") ?? "image/png";
     return { data: buf.toString("base64"), mimeType };
   } catch {
