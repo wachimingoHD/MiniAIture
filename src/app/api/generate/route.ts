@@ -28,7 +28,7 @@ import { getClientIp, readBearerToken } from "@/lib/server/request";
 import { getFirebaseStorageConfig, uploadGalleryImage } from "@/lib/storage/firebase-storage";
 
 export const runtime = "nodejs";
-export const maxDuration = 800;
+export const maxDuration = 120;
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const startedAt = new Date().toISOString();
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let creditsAfterDeduction: { daily: number; monthly: number } | null = null;
   let userPlan: "free" | "pro" | undefined;
 
-    if (cfg.security.requireAuthForGenerate) {
+  if (cfg.security.requireAuthForGenerate) {
     const token = readBearerToken(req);
     if (!token) {
       return NextResponse.json({ error: "Missing Authorization header." }, { status: 401 });
@@ -285,7 +285,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         } else {
           if (authenticatedUser && chargedCredits > 0) {
             const db = adminFirestore();
-          if (db) {
+            if (db) {
               await refundGenerationCredits(db, { uid: authenticatedUser.uid, chargedFrom });
             }
           }
