@@ -31,7 +31,22 @@ function getStripeClient(): Stripe | null {
 export interface CreateCheckoutSessionInput {
   uid: string;
   email: string;
+  // When set, reuse the existing Stripe customer instead of having Stripe
+  // create a new one from `customer_email`. Without this, every checkout click
+  // produced a fresh customer and broke 1:1 user↔customer accounting.
+  existingCustomerId?: string;
   affiliateCode?: string;
+}
+
+// Cap the affiliate code to a safe shape before forwarding it into Stripe
+// metadata. Stripe rejects metadata values over 500 chars and we don't want
+// arbitrary user-supplied strings flowing into our backend telemetry either.
+export function sanitizeAffiliateCode(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim().slice(0, 64);
+  if (!trimmed) return undefined;
+  if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) return undefined;
+  return trimmed;
 }
 
 export async function createProCheckoutSession(input: CreateCheckoutSessionInput): Promise<string> {
@@ -42,9 +57,8 @@ export async function createProCheckoutSession(input: CreateCheckoutSessionInput
   }
 
   const runtime = getRuntimeConfig();
-  const session = await stripe.checkout.sessions.create({
+  const sessionConfig: Stripe.Checkout.SessionCreateParams = {
     mode: "subscription",
-    customer_email: input.email,
     line_items: [{ price: cfg.proPriceId, quantity: 1 }],
     success_url: runtime.billing.checkoutSuccessUrl,
     cancel_url: runtime.billing.checkoutCancelUrl,
@@ -58,7 +72,15 @@ export async function createProCheckoutSession(input: CreateCheckoutSessionInput
         affiliateCode: input.affiliateCode ?? "",
       },
     },
-  });
+  };
+
+  if (input.existingCustomerId) {
+    sessionConfig.customer = input.existingCustomerId;
+  } else {
+    sessionConfig.customer_email = input.email;
+  }
+
+  const session = await stripe.checkout.sessions.create(sessionConfig);
 
   if (!session.url) throw new Error("Stripe checkout session created without URL.");
   return session.url;

@@ -56,7 +56,9 @@ export async function verifyIdToken(idToken: string): Promise<VerifiedUser | nul
   const app = getAdminApp();
   if (!app) return null;
   try {
-    const decoded = await getAuth(app).verifyIdToken(idToken);
+    // checkRevoked = true: rejects tokens whose user was disabled, deleted,
+    // or whose session was revoked since the token was issued.
+    const decoded = await getAuth(app).verifyIdToken(idToken, true);
     return {
       uid: decoded.uid,
       email: decoded.email,

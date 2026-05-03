@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import {
   validateGenerationRequest,
   upscaleIsHigherThanBase,
@@ -22,10 +23,54 @@ import {
   FAL_GEN_MODEL,
   FAL_UPSCALE_MODEL,
 } from "@/lib/fal";
+import { verifyIdToken } from "@/lib/auth/firebase-admin";
+import { readBearerToken } from "@/lib/server/request";
 
 export const runtime = "nodejs";
 
+interface CacheEntry {
+  ts: number;
+  payload: CostEstimateResponse;
+}
+const ESTIMATE_CACHE_TTL_MS = 30_000;
+const ESTIMATE_CACHE_MAX = 200;
+const estimateCache = new Map<string, CacheEntry>();
+
+function bodyHash(body: unknown): string {
+  return createHash("sha256").update(JSON.stringify(body)).digest("hex");
+}
+
+function readCache(key: string): CostEstimateResponse | null {
+  const entry = estimateCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > ESTIMATE_CACHE_TTL_MS) {
+    estimateCache.delete(key);
+    return null;
+  }
+  return entry.payload;
+}
+
+function writeCache(key: string, payload: CostEstimateResponse): void {
+  if (estimateCache.size >= ESTIMATE_CACHE_MAX) {
+    const oldestKey = estimateCache.keys().next().value;
+    if (oldestKey) estimateCache.delete(oldestKey);
+  }
+  estimateCache.set(key, { ts: Date.now(), payload });
+}
+
 export async function POST(req: NextRequest): Promise<NextResponse<CostEstimateResponse | { error: string }>> {
+  // Authentication required: this endpoint hits Google's countTokens API and
+  // accepts up to 5MB of base64 references — leaving it open is a free DoS
+  // vector against our Gemini quota.
+  const token = readBearerToken(req);
+  if (!token) {
+    return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  }
+  const user = await verifyIdToken(token);
+  if (!user) {
+    return NextResponse.json({ error: "Invalid or expired auth token." }, { status: 401 });
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -42,6 +87,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<CostEstimateR
   if (!geminiKey) {
     return NextResponse.json({ error: "GEMINI_API_KEY not configured." }, { status: 500 });
   }
+
+  // Per-user cache to absorb the keystroke-debounced calls from the UI
+  // without re-billing Gemini countTokens for the same input.
+  const cacheKey = `${user.uid}:${bodyHash({ params, referenceImages })}`;
+  const cached = readCache(cacheKey);
+  if (cached) return NextResponse.json(cached);
 
   // ---------------- Upscale block (computed first, reused in both totals) ----------------
   const pricing = await fetchFalPricing();
@@ -126,9 +177,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<CostEstimateR
     notes: [`Endpoint: ${falEndpoint}`, ...falCostSummary.notes],
   };
 
-  return NextResponse.json({
+  const payload: CostEstimateResponse = {
     upscale,
     google: googleBlock,
     fal: falBlock,
-  } satisfies CostEstimateResponse);
+  };
+  writeCache(cacheKey, payload);
+
+  return NextResponse.json(payload);
 }

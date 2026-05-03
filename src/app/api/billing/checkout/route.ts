@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyIdToken } from "@/lib/auth/firebase-admin";
+import { adminFirestore, verifyIdToken } from "@/lib/auth/firebase-admin";
 import { readBearerToken } from "@/lib/server/request";
-import { createProCheckoutSession } from "@/lib/stripe/client";
+import { getOrCreateUserDocument } from "@/lib/firestore/users";
+import { createProCheckoutSession, sanitizeAffiliateCode } from "@/lib/stripe/client";
+import { safeErrorMessage } from "@/lib/server/errors";
 
 export const runtime = "nodejs";
 
@@ -15,6 +17,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Invalid token or missing email in auth profile." }, { status: 401 });
   }
 
+  const db = adminFirestore();
+  if (!db) {
+    return NextResponse.json(
+      { error: "Firebase Admin not configured. Set FIREBASE_ADMIN_CREDENTIALS." },
+      { status: 500 },
+    );
+  }
+
+  const userDoc = await getOrCreateUserDocument(db, { uid: user.uid, email: user.email });
+
+  // Refuse to issue a second checkout when the user already has an active Pro
+  // subscription. Without this, clicking "Subscribe" twice produced two
+  // parallel subscriptions on the same Firebase user (and the second one's
+  // webhook simply overwrote the first), leaving the user double-charged.
+  if (userDoc.plan === "pro" && userDoc.subscriptionStatus === "active") {
+    return NextResponse.json(
+      { error: "You already have an active Pro subscription." },
+      { status: 409 },
+    );
+  }
+
   let body: unknown = {};
   try {
     body = await req.json();
@@ -22,19 +45,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     body = {};
   }
 
-  const affiliateCode =
-    body && typeof body === "object" && typeof (body as { affiliateCode?: unknown }).affiliateCode === "string"
-      ? (body as { affiliateCode: string }).affiliateCode
-      : undefined;
+  const affiliateCode = sanitizeAffiliateCode(
+    body && typeof body === "object" ? (body as { affiliateCode?: unknown }).affiliateCode : undefined,
+  );
 
   try {
     const url = await createProCheckoutSession({
       uid: user.uid,
       email: user.email,
+      existingCustomerId: userDoc.stripeCustomerId,
       affiliateCode,
     });
     return NextResponse.json({ url });
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(err, "checkout_failed") },
+      { status: 500 },
+    );
   }
 }

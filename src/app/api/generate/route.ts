@@ -3,11 +3,13 @@ import {
   validateGenerationRequest,
   isGoogleCapacityFailure,
   shouldFallbackToFal,
+  deriveUserFacingResolution,
   type FailureDetail,
   type GenerateResponse,
   type ReferenceImageMetadata,
   type GeneratedImage,
 } from "@/lib/nanoBanana";
+import { safeErrorMessage } from "@/lib/server/errors";
 import { runGoogleGeneration, type GoogleResult } from "@/lib/google";
 import { runFalGeneration, applyUpscaleIfEnabled } from "@/lib/fal";
 import { adminFirestore, verifyAppCheckToken, verifyIdToken } from "@/lib/auth/firebase-admin";
@@ -45,11 +47,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   const { params, referenceImages } = validation.value;
   const rawBody = body as Record<string, unknown>;
-  const userFacingResolution = (
-    typeof rawBody.userFacingResolution === "string" ? rawBody.userFacingResolution : params.resolution
-  ) as UserFacingResolution;
-  const requestedLowPriority =
-    typeof rawBody.lowPriorityMode === "boolean" ? rawBody.lowPriorityMode : params.flex_mode;
+  // Pricing inputs are derived from the validated technical params, NOT from
+  // the raw body. Trusting client-supplied `userFacingResolution` /
+  // `lowPriorityMode` allowed a paying user to generate at high resolution
+  // while paying for low resolution.
+  const userFacingResolution: UserFacingResolution =
+    deriveUserFacingResolution(params) as UserFacingResolution;
+  const requestedLowPriority = params.flex_mode;
   const devSimulationMode =
     typeof rawBody.devSimulationMode === "string" ? rawBody.devSimulationMode : "off";
 
@@ -421,7 +425,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
     return NextResponse.json(
-      { error: "Unexpected generation error.", detail: (err as Error).message },
+      { error: "Unexpected generation error.", detail: safeErrorMessage(err, "internal_error") },
       { status: 500 },
     );
   }

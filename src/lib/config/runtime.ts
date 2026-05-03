@@ -22,14 +22,6 @@ function parseNonNegativeInt(raw: string | undefined, fallback: number): number 
   return rounded >= 0 ? rounded : fallback;
 }
 
-function parseCsv(raw: string | undefined): string[] {
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
 export interface RuntimeConfig {
   credits: {
     freeDaily: number;
@@ -46,7 +38,6 @@ export interface RuntimeConfig {
   billing: {
     checkoutSuccessUrl: string;
     checkoutCancelUrl: string;
-    allowMockStripeWebhookInDev: boolean;
   };
 }
 
@@ -81,7 +72,6 @@ export function getRuntimeConfig(): RuntimeConfig {
         process.env.STRIPE_CHECKOUT_SUCCESS_URL ?? `${appUrl}/?billing=success`,
       checkoutCancelUrl:
         process.env.STRIPE_CHECKOUT_CANCEL_URL ?? `${appUrl}/?billing=cancelled`,
-      allowMockStripeWebhookInDev: parseBoolean(process.env.ALLOW_MOCK_STRIPE_WEBHOOK_IN_DEV, false),
     },
   };
 
@@ -109,8 +99,4 @@ export function getRuntimeConfigWarnings(): string[] {
     warnings.push("STRIPE_CHECKOUT_CANCEL_URL is not an absolute URL.");
   }
   return warnings;
-}
-
-export function getBypassAuthIds(): string[] {
-  return parseCsv(process.env.AUTH_BYPASS_UIDS);
 }

@@ -144,6 +144,10 @@ export default function HomePage() {
 
   const runEstimate = useCallback(async () => {
     if (!derivedParams.prompt.trim()) return;
+    if (!authToken) {
+      setEstimate(null);
+      return;
+    }
     estimateAbortRef.current?.abort();
     const controller = new AbortController();
     estimateAbortRef.current = controller;
@@ -152,7 +156,7 @@ export default function HomePage() {
       const refs: ReferenceImageInput[] = referenceImages.map((r) => ({ data: r.base64, mimeType: r.mimeType, filename: r.filename, size: r.size }));
       const res = await fetch("/api/estimate-cost", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({ params: derivedParams, referenceImages: refs }),
         signal: controller.signal,
       });
@@ -160,7 +164,7 @@ export default function HomePage() {
     } finally {
       setEstimating(false);
     }
-  }, [derivedParams, referenceImages]);
+  }, [authToken, derivedParams, referenceImages]);
 
   useEffect(() => {
     const handle = setTimeout(() => void runEstimate(), 500);
@@ -338,7 +342,7 @@ export default function HomePage() {
         </section>
 
         <section className="space-y-6">
-          <CostPanel estimate={estimate} estimating={estimating} hasPrompt={Boolean(derivedParams.prompt.trim())} />
+          <CostPanel estimate={estimate} estimating={estimating} hasPrompt={Boolean(derivedParams.prompt.trim())} signedIn={Boolean(authToken)} />
           <ResultPanel result={result} generating={generating} />
         </section>
       </div>
@@ -364,10 +368,12 @@ function CostPanel({
   estimate,
   estimating,
   hasPrompt,
+  signedIn,
 }: {
   estimate: CostEstimateResponse | null;
   estimating: boolean;
   hasPrompt: boolean;
+  signedIn: boolean;
 }) {
   const cheaperProvider = useMemo(() => {
     if (!estimate) return null;
@@ -379,7 +385,10 @@ function CostPanel({
       {!hasPrompt && (
         <p className="text-sm text-[var(--color-text-muted)]">Enter a prompt to see cost estimates.</p>
       )}
-      {hasPrompt && estimating && !estimate && (
+      {hasPrompt && !signedIn && (
+        <p className="text-sm text-[var(--color-text-muted)]">Sign in to see cost estimates.</p>
+      )}
+      {hasPrompt && signedIn && estimating && !estimate && (
         <p className="text-sm text-[var(--color-text-secondary)]">Calculating...</p>
       )}
       {estimate && (

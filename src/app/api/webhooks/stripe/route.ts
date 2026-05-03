@@ -5,8 +5,38 @@ import { adminFirestore } from "@/lib/auth/firebase-admin";
 import { getRuntimeConfig } from "@/lib/config/runtime";
 import type { UserDocument } from "@/lib/firestore/schema";
 import type { DocumentReference, Firestore } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
+import { safeErrorMessage } from "@/lib/server/errors";
 
 export const runtime = "nodejs";
+
+const PROCESSED_EVENTS_COLLECTION = "stripe_processed_events";
+
+// Stripe Subscription's current_period_* fields moved to SubscriptionItem in
+// recent API versions. We read them defensively without relying on the
+// generated types, which lag behind those changes.
+interface SubscriptionPeriodView {
+  current_period_start?: number;
+  current_period_end?: number;
+  start_date?: number;
+}
+
+interface InvoicePeriodView {
+  subscription?: string;
+  period_end?: number;
+}
+
+function asPeriodView(sub: Stripe.Subscription): SubscriptionPeriodView {
+  return sub as unknown as SubscriptionPeriodView;
+}
+
+function asInvoiceView(invoice: Stripe.Invoice): InvoicePeriodView {
+  return invoice as unknown as InvoicePeriodView;
+}
+
+function customerIdOf(sub: Stripe.Subscription): string {
+  return typeof sub.customer === "string" ? sub.customer : sub.customer.id;
+}
 
 async function findUserRef(db: Firestore, args: {
   uid?: string | null;
@@ -34,6 +64,20 @@ async function findUserRef(db: Firestore, args: {
   return null;
 }
 
+// Defense in depth: when the webhook gives us a uid via subscription metadata,
+// confirm the existing user document hasn't already been linked to a different
+// Stripe customer. If it has, refuse to mutate — this prevents an attacker (or
+// dashboard misuse) from rewriting another user's plan by setting metadata.uid.
+async function customerMatches(
+  ref: DocumentReference,
+  expectedCustomerId: string,
+): Promise<boolean> {
+  const snap = await ref.get();
+  if (!snap.exists) return true;
+  const existing = (snap.data() as UserDocument).stripeCustomerId;
+  return !existing || existing === expectedCustomerId;
+}
+
 function subscriptionStatusToApp(status: Stripe.Subscription.Status): UserDocument["subscriptionStatus"] {
   if (status === "past_due" || status === "unpaid") return "past_due";
   if (status === "canceled") return "canceled";
@@ -42,33 +86,34 @@ function subscriptionStatusToApp(status: Stripe.Subscription.Status): UserDocume
 
 async function onSubscriptionCreated(db: Firestore, sub: Stripe.Subscription): Promise<void> {
   const uid = (sub.metadata?.uid as string | undefined) ?? null;
+  const customerId = customerIdOf(sub);
   const ref = await findUserRef(db, {
     uid,
-    stripeCustomerId: typeof sub.customer === "string" ? sub.customer : sub.customer.id,
+    stripeCustomerId: customerId,
     stripeSubscriptionId: sub.id,
   });
   if (!ref) return;
+  if (!(await customerMatches(ref, customerId))) {
+    console.warn("Stripe webhook customer mismatch for user", ref.id);
+    return;
+  }
 
   const cfg = getRuntimeConfig();
-  const subAny = sub as unknown as {
-    current_period_start?: number;
-    current_period_end?: number;
-    start_date: number;
-  };
+  const subView = asPeriodView(sub);
   const subscriptionStart =
-    typeof subAny.current_period_start === "number"
-      ? subAny.current_period_start * 1000
-      : subAny.start_date * 1000;
+    typeof subView.current_period_start === "number"
+      ? subView.current_period_start * 1000
+      : (subView.start_date ?? Math.floor(Date.now() / 1000)) * 1000;
   const subscriptionEnd =
-    typeof subAny.current_period_end === "number"
-      ? subAny.current_period_end * 1000
+    typeof subView.current_period_end === "number"
+      ? subView.current_period_end * 1000
       : Date.now() + 30 * 24 * 60 * 60 * 1000;
   const now = Date.now();
 
   await ref.set(
     {
       plan: "pro",
-      stripeCustomerId: typeof sub.customer === "string" ? sub.customer : sub.customer.id,
+      stripeCustomerId: customerId,
       stripeSubscriptionId: sub.id,
       subscriptionStatus: subscriptionStatusToApp(sub.status),
       subscriptionStart: new Date(subscriptionStart).toISOString(),
@@ -85,12 +130,17 @@ async function onSubscriptionCreated(db: Firestore, sub: Stripe.Subscription): P
 }
 
 async function onSubscriptionDeleted(db: Firestore, sub: Stripe.Subscription): Promise<void> {
+  const customerId = customerIdOf(sub);
   const ref = await findUserRef(db, {
     uid: (sub.metadata?.uid as string | undefined) ?? null,
-    stripeCustomerId: typeof sub.customer === "string" ? sub.customer : sub.customer.id,
+    stripeCustomerId: customerId,
     stripeSubscriptionId: sub.id,
   });
   if (!ref) return;
+  if (!(await customerMatches(ref, customerId))) {
+    console.warn("Stripe webhook customer mismatch for user", ref.id);
+    return;
+  }
 
   await ref.set(
     {
@@ -102,12 +152,17 @@ async function onSubscriptionDeleted(db: Firestore, sub: Stripe.Subscription): P
 }
 
 async function onInvoicePaid(db: Firestore, invoice: Stripe.Invoice): Promise<void> {
-  const invoiceAny = invoice as unknown as { subscription?: string };
+  const invoiceView = asInvoiceView(invoice);
+  const customerId = typeof invoice.customer === "string" ? invoice.customer : null;
   const ref = await findUserRef(db, {
-    stripeCustomerId: typeof invoice.customer === "string" ? invoice.customer : null,
-    stripeSubscriptionId: typeof invoiceAny.subscription === "string" ? invoiceAny.subscription : null,
+    stripeCustomerId: customerId,
+    stripeSubscriptionId: typeof invoiceView.subscription === "string" ? invoiceView.subscription : null,
   });
   if (!ref) return;
+  if (customerId && !(await customerMatches(ref, customerId))) {
+    console.warn("Stripe webhook customer mismatch for user", ref.id);
+    return;
+  }
 
   const cfg = getRuntimeConfig();
   await db.runTransaction(async (tx) => {
@@ -124,8 +179,8 @@ async function onInvoicePaid(db: Firestore, invoice: Stripe.Invoice): Promise<vo
     };
 
     const invoicePeriodEnd =
-      typeof (invoice as { period_end?: unknown }).period_end === "number"
-        ? ((invoice as { period_end: number }).period_end * 1000)
+      typeof invoiceView.period_end === "number"
+        ? invoiceView.period_end * 1000
         : current.subscriptionEnd
           ? Date.parse(current.subscriptionEnd)
           : undefined;
@@ -160,13 +215,38 @@ async function onInvoicePaid(db: Firestore, invoice: Stripe.Invoice): Promise<vo
 }
 
 async function onInvoiceFailed(db: Firestore, invoice: Stripe.Invoice): Promise<void> {
-  const invoiceAny = invoice as unknown as { subscription?: string };
+  const invoiceView = asInvoiceView(invoice);
+  const customerId = typeof invoice.customer === "string" ? invoice.customer : null;
   const ref = await findUserRef(db, {
-    stripeCustomerId: typeof invoice.customer === "string" ? invoice.customer : null,
-    stripeSubscriptionId: typeof invoiceAny.subscription === "string" ? invoiceAny.subscription : null,
+    stripeCustomerId: customerId,
+    stripeSubscriptionId: typeof invoiceView.subscription === "string" ? invoiceView.subscription : null,
   });
   if (!ref) return;
+  if (customerId && !(await customerMatches(ref, customerId))) {
+    console.warn("Stripe webhook customer mismatch for user", ref.id);
+    return;
+  }
   await ref.set({ subscriptionStatus: "past_due" } satisfies Partial<UserDocument>, { merge: true });
+}
+
+async function dispatch(db: Firestore, event: Stripe.Event): Promise<void> {
+  switch (event.type) {
+    case "customer.subscription.created":
+    case "customer.subscription.updated":
+      await onSubscriptionCreated(db, event.data.object as Stripe.Subscription);
+      return;
+    case "customer.subscription.deleted":
+      await onSubscriptionDeleted(db, event.data.object as Stripe.Subscription);
+      return;
+    case "invoice.payment_succeeded":
+      await onInvoicePaid(db, event.data.object as Stripe.Invoice);
+      return;
+    case "invoice.payment_failed":
+      await onInvoiceFailed(db, event.data.object as Stripe.Invoice);
+      return;
+    default:
+      return;
+  }
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -183,7 +263,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json(
       {
         error: "Stripe signature verification failed.",
-        detail: (err as Error).message,
+        detail: safeErrorMessage(err, "invalid_signature"),
       },
       { status: 400 },
     );
@@ -197,27 +277,37 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  switch (event.type) {
-    case "customer.subscription.created":
-    case "customer.subscription.updated": {
-      await onSubscriptionCreated(db, event.data.object as Stripe.Subscription);
-      break;
-    }
-    case "customer.subscription.deleted": {
-      await onSubscriptionDeleted(db, event.data.object as Stripe.Subscription);
-      break;
-    }
-    case "invoice.payment_succeeded": {
-      await onInvoicePaid(db, event.data.object as Stripe.Invoice);
-      break;
-    }
-    case "invoice.payment_failed": {
-      await onInvoiceFailed(db, event.data.object as Stripe.Invoice);
-      break;
-    }
-    default:
-      break;
+  // Idempotency: Stripe will retry webhook delivery on 5xx (or transient
+  // network errors). Without dedup, retries double-incremented stats counters
+  // and re-issued credit pools. We use a Firestore document keyed by event.id
+  // as an atomic lock — `create()` fails if the doc exists, which is exactly
+  // the semantics we need.
+  const eventLock = db.collection(PROCESSED_EVENTS_COLLECTION).doc(event.id);
+  try {
+    await eventLock.create({
+      type: event.type,
+      receivedAt: FieldValue.serverTimestamp(),
+    });
+  } catch {
+    return NextResponse.json({ received: true, type: event.type, deduplicated: true });
   }
 
-  return NextResponse.json({ received: true, type: event.type });
+  try {
+    await dispatch(db, event);
+    await eventLock.set(
+      { completedAt: FieldValue.serverTimestamp() },
+      { merge: true },
+    );
+    return NextResponse.json({ received: true, type: event.type });
+  } catch (err) {
+    // Release the lock so Stripe's retry can reprocess from a clean state.
+    await eventLock.delete().catch(() => {});
+    return NextResponse.json(
+      {
+        error: "Webhook handler failed.",
+        detail: safeErrorMessage(err, "internal_error"),
+      },
+      { status: 500 },
+    );
+  }
 }

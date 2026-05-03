@@ -26,20 +26,25 @@ export async function getOrCreateUserDocument(db: Firestore, args: {
 }): Promise<UserDocument> {
   const { credits } = getRuntimeConfig();
   const ref = userRef(db, args.uid);
-  const snapshot = await ref.get();
-  if (snapshot.exists) {
-    return snapshot.data() as UserDocument;
-  }
 
-  const initial = buildInitialUserDocument({
-    email: normalizeEmail(args.email),
-    plan: "free",
-    freeDailyCredits: credits.freeDaily,
-    proDailyCredits: credits.proDaily,
-    proMonthlyCredits: credits.proMonthly,
+  // Wrap the read+write in a transaction so two concurrent first-login requests
+  // can't both observe an empty doc and race to overwrite each other's seed.
+  return db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    if (snapshot.exists) {
+      return snapshot.data() as UserDocument;
+    }
+
+    const initial = buildInitialUserDocument({
+      email: normalizeEmail(args.email),
+      plan: "free",
+      freeDailyCredits: credits.freeDaily,
+      proDailyCredits: credits.proDaily,
+      proMonthlyCredits: credits.proMonthly,
+    });
+    tx.set(ref, initial);
+    return initial;
   });
-  await ref.set(initial, { merge: true });
-  return initial;
 }
 
 export interface DeductCreditsResult {

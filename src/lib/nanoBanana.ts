@@ -242,12 +242,21 @@ export function validateGenerationRequest(
     const data = typeof ref.data === "string" ? ref.data : "";
     const mimeType = typeof ref.mimeType === "string" ? ref.mimeType : "";
     if (!data || !mimeType.startsWith("image/")) continue;
-    const size = typeof ref.size === "number" ? ref.size : approxBase64Size(data);
+    // Always derive size from the actual base64 payload — the client-supplied
+    // `size` is untrusted and was previously used to bypass the total-bytes cap.
+    const size = approxBase64Size(data);
+    if (size > MAX_REFERENCE_IMAGES_TOTAL_BYTES) {
+      errors.push({
+        field: "referenceImages",
+        message: `Single reference image exceeds ${MAX_REFERENCE_IMAGES_TOTAL_BYTES / 1024 / 1024}MB`,
+      });
+      continue;
+    }
     totalBytes += size;
     referenceImages.push({
       data,
       mimeType,
-      filename: typeof ref.filename === "string" ? ref.filename : undefined,
+      filename: typeof ref.filename === "string" ? ref.filename.slice(0, 256) : undefined,
       size,
     });
   }
@@ -312,17 +321,23 @@ export function shouldFallbackToFal(failure: FailureDetail): boolean {
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// Resolution -> imageSize mapping for Google
-// ---------------------------------------------------------------------------
-
-export function googleImageSize(res: Resolution): "512" | "1K" | "2K" | "4K" {
-  return res;
-}
-
 // fal endpoint expects the literal "0.5K" instead of "512"
 export function falResolutionToken(res: Resolution): string {
   return res === "512" ? "0.5K" : res;
+}
+
+// Derives the user-facing resolution from the validated technical params.
+// Used for credit pricing — must NEVER be read directly from the request body,
+// otherwise a client can decouple "what they actually generate" from "what we
+// charge them for".
+export function deriveUserFacingResolution(params: NanoBananaParams): Resolution {
+  if (
+    params.upscale_enabled &&
+    upscaleIsHigherThanBase(params.resolution, params.upscale_resolution)
+  ) {
+    return params.upscale_resolution;
+  }
+  return params.resolution;
 }
 
 // ---------------------------------------------------------------------------

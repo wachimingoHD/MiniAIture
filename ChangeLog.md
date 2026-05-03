@@ -8,6 +8,72 @@ Format: `YYYY-MM-DD` headers (newest on top). Each entry is a bullet list. When 
 
 ---
 
+## 2026-05-03 - Hardening de seguridad (supersedes parts of "Phase 2 Core monetizable integrado" related to Stripe, /api/generate y /api/estimate-cost)
+
+Auditoria de seguridad sobre el codigo generado por GPT, ejecutada antes de abrir el flujo a usuarios reales. Ver MiniAItureDOC.md seccion 0.0 para el detalle por subseccion.
+
+### Validacion tecnica
+- `npm run lint` OK.
+- `npm run test` OK (16/16, incluye nuevo caso de dedup de webhook Stripe).
+- `npm run build` OK.
+
+### Bypass critico de pricing cerrado
+- `POST /api/generate`: `userFacingResolution` y `lowPriorityMode` se derivan server-side desde los `params` validados. Helper `deriveUserFacingResolution` en `src/lib/nanoBanana.ts`.
+- Antes del fix, un Pro podia generar 4K standard pagando 75 creditos en lugar de 150 (50% de descuento via decoupling cliente).
+
+### Stripe - integridad financiera
+- Webhook deduplicado por `event.id` mediante lock atomico en nueva coleccion `stripe_processed_events` (via `doc.create()`); en fallo del handler, libera el lock para reintento limpio.
+- `POST /api/billing/checkout` reusa `stripeCustomerId` existente en lugar de crear un nuevo Customer en cada intento.
+- `POST /api/billing/checkout` rechaza con 409 si la suscripcion Pro ya esta activa, evitando dobles cargos.
+- Webhook hace cross-check de `metadata.uid` vs `stripeCustomerId` enlazado al doc; rehusa mutaciones si no coinciden.
+
+### Validaciones de input
+- `validateGenerationRequest` siempre computa `size` desde el base64 real (ignora `ref.size` del cliente).
+- Cap por imagen ademas del cap total; truncado de `filename` a 256 chars.
+- `sanitizeAffiliateCode` en checkout: max 64 chars, regex `[a-zA-Z0-9_-]+`.
+
+### Endpoints
+- `POST /api/estimate-cost`: ahora requiere auth + cache LRU 30s por `uid + sha256(body)` para absorber el debounce del frontend sin reabrir DoS contra cuota de Gemini.
+- Frontend: omite la llamada al estimate cuando no hay sesion y muestra "Sign in to see cost estimates".
+
+### Auth
+- `verifyIdToken` activa `checkRevoked = true`: tokens revocados o usuarios deshabilitados son rechazados.
+
+### Anti-spoof IP
+- `getClientIp` prioriza headers de edge (`x-vercel-forwarded-for`, `cf-connecting-ip`, `x-real-ip`) antes del header configurable, dejando la IP del rate-limit Free no manipulable en Vercel/Cloudflare.
+
+### SSRF y blast radius
+- `fetchAsBase64` (post-proceso fal): allowlist `*.fal.media`, `*.fal.ai`, `*.fal.run` sobre HTTPS, cap 25 MB en bytes descargados.
+
+### Concurrencia
+- `getOrCreateUserDocument` envuelto en `runTransaction` (race en first-login).
+- `GET /api/user/credits` aplica reset diario en transaccion solo cuando esta vencido (no toma lock en path de lectura).
+
+### Headers HTTP
+- Añadidos a `next.config.ts`: `Strict-Transport-Security` (preload), `Permissions-Policy` (camera/mic/geo/topics off), `X-DNS-Prefetch-Control: off`.
+- CSP NO incluida en este pase (requiere tuning con dominios de Firebase y Stripe).
+
+### Redaccion de errores en produccion
+- Nuevo helper `safeErrorMessage` en `src/lib/server/errors.ts`.
+- Aplicado en `/api/generate`, `/api/billing/checkout` y `/api/webhooks/stripe`: `err.message` interno se omite en `NODE_ENV=production`.
+
+### Limpieza
+- Eliminados de `src/lib/config/runtime.ts`: `AUTH_BYPASS_UIDS` (`getBypassAuthIds`, `parseCsv`) y `ALLOW_MOCK_STRIPE_WEBHOOK_IN_DEV`. Eran codigo muerto (declarado, nunca usado).
+- Eliminado `googleImageSize` de `src/lib/nanoBanana.ts` (wrapper identidad); inlinada la referencia en `src/lib/google.ts`.
+
+### Nueva coleccion Firestore
+- `stripe_processed_events`: docs keyed por `event.id` con `{ type, receivedAt, completedAt? }`. Sirve como lock idempotente. Sin TTL automatico en este pase (sugerido 90 dias).
+
+### Tests
+- Añadido test de dedup en `src/app/api/webhooks/stripe/route.test.ts`.
+- Mocks ampliados: soportan coleccion `stripe_processed_events` y `customerMatches` (lectura de `ref.get()` sobre el user ref).
+
+### Pendientes conocidos no abordados
+- CSP completa.
+- `npm audit` reporta 12 vulnerabilidades transitivas (10 moderate, 2 low) pendientes de revisar.
+- Tests son humo: cubren happy-path y 401, no la logica financiera profunda.
+- Politica de retencion de imagenes Pro tras cancelacion sigue pendiente de definicion de negocio.
+
 ## 2026-05-03 - UX de producto, simulacion dev y unificacion de fechas ISO (supersedes parts of 2026-05-03 entry "Phase 2 Core monetizable integrado")
 
 Iteracion de producto posterior al cierre de Phase 2 para alinear UX final, depuracion operativa y formato de datos.

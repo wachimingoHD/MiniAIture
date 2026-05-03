@@ -8,12 +8,6 @@ import { readBearerToken } from "@/lib/server/request";
 
 export const runtime = "nodejs";
 
-function withDailyReset(doc: UserDocument): UserDocument {
-  const cfg = getRuntimeConfig();
-  const allowance = doc.plan === "pro" ? cfg.credits.proDaily : cfg.credits.freeDaily;
-  return applyDailyResetIfDue(doc, Date.now(), allowance);
-}
-
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const token = readBearerToken(req);
   if (!token) {
@@ -32,14 +26,34 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const doc = await getOrCreateUserDocument(db, { uid: user.uid, email: user.email });
-  const withReset = withDailyReset(doc);
-  await db.collection("users").doc(user.uid).set(withReset, { merge: true });
+  const cfg = getRuntimeConfig();
+  const initial = await getOrCreateUserDocument(db, { uid: user.uid, email: user.email });
+  const allowance = initial.plan === "pro" ? cfg.credits.proDaily : cfg.credits.freeDaily;
+  const resetMs = Date.parse(initial.credits.dailyResetAt);
+  const needsReset = !Number.isFinite(resetMs) || Date.now() > resetMs;
+
+  // Only run a transaction when a reset is actually due — the read-only path
+  // is hit on every page load and shouldn't take a lock.
+  let finalDoc: UserDocument = initial;
+  if (needsReset) {
+    finalDoc = await db.runTransaction(async (tx) => {
+      const ref = db.collection("users").doc(user.uid);
+      const snap = await tx.get(ref);
+      if (!snap.exists) return initial;
+      const current = snap.data() as UserDocument;
+      const allowanceForCurrent = current.plan === "pro" ? cfg.credits.proDaily : cfg.credits.freeDaily;
+      const reset = applyDailyResetIfDue(current, Date.now(), allowanceForCurrent);
+      if (reset !== current) {
+        tx.set(ref, reset, { merge: true });
+      }
+      return reset;
+    });
+  }
 
   return NextResponse.json({
     uid: user.uid,
-    plan: withReset.plan,
-    credits: withReset.credits,
-    subscriptionStatus: withReset.subscriptionStatus ?? null,
+    plan: finalDoc.plan,
+    credits: finalDoc.credits,
+    subscriptionStatus: finalDoc.subscriptionStatus ?? null,
   });
 }
