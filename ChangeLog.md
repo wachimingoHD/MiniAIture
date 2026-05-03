@@ -8,6 +8,136 @@ Format: `YYYY-MM-DD` headers (newest on top). Each entry is a bullet list. When 
 
 ---
 
+## 2026-05-03 - UX de producto, simulacion dev y unificacion de fechas ISO (supersedes parts of 2026-05-03 entry "Phase 2 Core monetizable integrado")
+
+Iteracion de producto posterior al cierre de Phase 2 para alinear UX final, depuracion operativa y formato de datos.
+
+### Validacion tecnica
+- `npm run lint` OK.
+- `npm run test` OK.
+- `npm run build` OK.
+
+### Home UX (app principal)
+- Se separo la experiencia en dos capas:
+  - `User options` (controles de negocio para usuario final),
+  - `Developer parameters` (desplegable tecnico con estado real de params).
+- `Aspect ratio` se movio al bloque de desarrollador.
+- `Reference images` paso a mostrarse justo debajo de `Prompt`.
+- El boton `Generate thumbnail` ahora muestra coste de creditos y saldo (`Daily`/`Monthly`).
+- Se restauro la UI visual de:
+  - `Estimated cost` (cards legibles),
+  - `Result` (imagenes renderizadas, banners de fallback, descarga, metadata).
+- Se restauro en cabecera la informacion de usuario autenticado (email, plan, creditos).
+
+### Reglas de plan en UI de resolucion
+- Free:
+  - resolucion bloqueada en `512`,
+  - opciones superiores mostradas como `Pro feature`,
+  - low-priority forzado sin aplicar descuento extra de creditos por ese flag.
+- Pro:
+  - se oculta opcion `512` en selector principal.
+
+### Mapeo de resoluciones y coste de creditos
+- Mapeo funcional activo:
+  - `512` -> base 512 sin upscale,
+  - `1K` -> 512 + upscale 1K,
+  - `2K` -> 1K + upscale 2K,
+  - `4K` -> 1K + upscale 4K.
+- Se implemento pricing dinamico de creditos request-level (frontend + backend):
+  - base 100,
+  - 512: -25%,
+  - 1K: 0%,
+  - 2K: +25%,
+  - 4K: +50%,
+  - low-priority Pro: -25%.
+- `deductGenerationCredits` ahora recibe `cost` calculado en runtime en lugar de asumir solo coste fijo.
+
+### Simulacion para desarrollo
+- `POST /api/generate` admite modo simulacion en no-produccion:
+  - `success`: gasta creditos y registra stats sin generar imagen real.
+  - `reject`: simula rechazo con reembolso de creditos.
+
+### Gallery y Pricing
+- Gallery:
+  - cada entrada abre modal ampliado con imagen, prompt completo y metadatos.
+  - fix de visualizacion inconsistente de fecha entre entradas.
+- Pricing:
+  - si la suscripcion ya esta activa/trialing, el CTA se deshabilita y muestra `Already acquired`.
+
+### Firestore - unificacion de fechas
+- Se migro el formato de fechas de negocio a ISO string para consistencia futura:
+  - `credits.dailyResetAt`,
+  - `credits.monthlyResetAt`,
+  - `subscriptionStart`,
+  - `subscriptionEnd`,
+  - `gallery[].createdAt`.
+- Se elimino el esquema dual nuevo-viejo en escrituras actuales.
+- `GET /api/gallery` mantiene normalizacion de lecturas legacy para no romper datos previos de pruebas.
+
+### Correcciones operativas
+- Ajuste en persistencia de stats para evitar desalineacion de `falGenerations` en escenarios de proveedor efectivo/fallback.
+- Limpieza de texto mojibake visible en varias superficies UI reescritas durante la iteracion.
+
+## 2026-05-03 - Phase 2 Core monetizable integrado (supersedes 2026-05-03 entry "Phase 1 scaffolding")
+
+Cierre de la brecha entre el scaffold de Phase 1 y el objetivo monetizable/operativo definido para Phase 2.
+
+### Validación técnica final
+- `npm run lint` OK.
+- `npm run test` OK (unit + API smoke).
+- `npm run build` OK.
+
+### Auth + identidad (Firebase)
+- Implementado cliente Firebase Auth (sign-in y obtención de ID token para llamadas autenticadas).
+- Implementado Firebase Admin server-side (`verifyIdToken`) para proteger endpoints.
+- Integrado el estado de sesión real en frontend.
+
+### Créditos, planes y gating de generación
+- Activado `GET /api/user/credits` con lectura real en Firestore (ya no 501).
+- Integrado sistema de créditos con transacciones atómicas (`runTransaction`) para débito y reembolso.
+- Reglas Free/Pro aplicadas server-side en `POST /api/generate`:
+  - coste fijo de 100 créditos por generación,
+  - restricciones de Free (resolución/pipeline/capacidades permitidas),
+  - errores de negocio claros (`401`, `402`, `429` y validaciones de plan).
+- Reembolso explícito de créditos cuando la generación falla tras un débito exitoso.
+
+### Stripe (core de suscripción)
+- Implementado cliente Stripe real para checkout y webhook signature verification.
+- Nuevo endpoint `POST /api/billing/checkout` para iniciar suscripción Pro.
+- Nuevo endpoint `GET /api/billing/status` para estado de suscripción en frontend.
+- `POST /api/webhooks/stripe` pasó de stub a operativo:
+  - validación de firma,
+  - mapeo de eventos a mutaciones Firestore (upgrade/downgrade/renovación/past_due).
+
+### Persistencia de galería Pro
+- Migración de enfoque: se abandona R2 para este sprint y se usa **Firebase Storage**.
+- Subida server-side de la imagen final de usuarios Pro.
+- Escritura de índice `gallery` en `users/{uid}` con límite FIFO de 200 entradas.
+- Nuevo endpoint `GET /api/gallery` para listar galería del usuario.
+- Nueva página `/gallery` para consulta visual de imágenes generadas (solo Pro).
+
+### UI de monetización
+- Nueva página `/pricing`.
+- Integración del texto/enlace `Pricing` de la web hacia la sección de precios.
+- Botón de suscripción conectado a Stripe Checkout (sandbox/test mode).
+
+### Seguridad y anti-abuso mínimo
+- Rate-limit Free por IP: 1 generación/día en capa API.
+- Validación App Check server-side con posibilidad de activar/desactivar por entorno.
+- Logging estructurado para trazabilidad operacional (créditos, webhooks, generación).
+
+### Limpieza y correcciones relevantes
+- Eliminado por completo el historial local (IndexedDB/localStorage) para evitar conflictos con el modelo de galería persistente.
+- Corregidos issues de bootstrap de historial local (`IDBObjectStore index not found`) al retirar la capa legacy.
+- Se añadieron trazas de debug para diagnosticar persistencia de galería y se retiraron después de estabilizar el flujo.
+
+### Decisiones de alcance confirmadas en esta fase
+- Scope: Core monetizable.
+- Configuración: parámetros de negocio configurables (env + defaults tipados).
+- Entorno: sandbox/test first.
+- Testing: unit + API smoke.
+- Afiliados: pospuestos a sprint 2.
+
 ## 2026-05-03 - Phase 1 scaffolding (full MVP frontend + AI APIs)
 
 Initial bootstrap of the Next.js project from scratch based on `MiniAItureDOC.md` (sections 1–11 fully implemented, sections 12+ scaffolded with TODOs).

@@ -1,17 +1,5 @@
-// Phase 2 - Stripe client
-// =============================================================================
-// Handles subscriptions (Pro plan), affiliate commissions, and webhook events.
-//
-// To activate Phase 2:
-//   1. Create a Stripe account, enable test mode for development.
-//   2. Create a recurring product/price for the Pro plan; copy the price ID.
-//   3. Set up a webhook endpoint pointing at /api/webhooks/stripe and copy
-//      the signing secret.
-//   4. Install: `npm install stripe`
-//   5. Implement the functions below.
-//
-// Reference: MiniAItureDOC.md sections 12, 16.3.
-// =============================================================================
+import Stripe from "stripe";
+import { getRuntimeConfig } from "@/lib/config/runtime";
 
 export interface StripeConfig {
   secretKey: string;
@@ -27,19 +15,60 @@ export function getStripeConfig(): StripeConfig | null {
   return { secretKey, webhookSecret, proPriceId };
 }
 
+let cachedStripe: Stripe | null | undefined;
+
+function getStripeClient(): Stripe | null {
+  if (cachedStripe !== undefined) return cachedStripe;
+  const cfg = getStripeConfig();
+  if (!cfg) {
+    cachedStripe = null;
+    return null;
+  }
+  cachedStripe = new Stripe(cfg.secretKey);
+  return cachedStripe;
+}
+
 export interface CreateCheckoutSessionInput {
   uid: string;
   email: string;
   affiliateCode?: string;
 }
 
-// TODO[Phase 2]: implement Stripe SDK usage
-export async function createProCheckoutSession(_input: CreateCheckoutSessionInput): Promise<string> {
-  throw new Error("Stripe not implemented yet (Phase 2).");
+export async function createProCheckoutSession(input: CreateCheckoutSessionInput): Promise<string> {
+  const cfg = getStripeConfig();
+  const stripe = getStripeClient();
+  if (!cfg || !stripe) {
+    throw new Error("Stripe is not configured. Set STRIPE_* env vars.");
+  }
+
+  const runtime = getRuntimeConfig();
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    customer_email: input.email,
+    line_items: [{ price: cfg.proPriceId, quantity: 1 }],
+    success_url: runtime.billing.checkoutSuccessUrl,
+    cancel_url: runtime.billing.checkoutCancelUrl,
+    metadata: {
+      uid: input.uid,
+      affiliateCode: input.affiliateCode ?? "",
+    },
+    subscription_data: {
+      metadata: {
+        uid: input.uid,
+        affiliateCode: input.affiliateCode ?? "",
+      },
+    },
+  });
+
+  if (!session.url) throw new Error("Stripe checkout session created without URL.");
+  return session.url;
 }
 
-// Webhook signature verification — DO NOT skip this.
-// TODO[Phase 2]: implement using stripe.webhooks.constructEvent
-export function verifyWebhookSignature(_payload: string, _signature: string): unknown {
-  throw new Error("Stripe webhook verification not implemented yet (Phase 2).");
+export function verifyWebhookSignature(payload: string, signature: string): Stripe.Event {
+  const cfg = getStripeConfig();
+  const stripe = getStripeClient();
+  if (!cfg || !stripe) {
+    throw new Error("Stripe webhook verification unavailable: missing STRIPE_* env vars.");
+  }
+  return stripe.webhooks.constructEvent(payload, signature, cfg.webhookSecret);
 }

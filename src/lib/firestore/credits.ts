@@ -17,6 +17,10 @@ export interface CreditCheckResult {
   ok: boolean;
   reason?: "INSUFFICIENT" | "RESET_DUE";
   newDoc?: UserDocument;
+  chargedFrom?: {
+    daily: number;
+    monthly: number;
+  };
 }
 
 // Apply the time-based daily reset before deducting.
@@ -25,13 +29,14 @@ export function applyDailyResetIfDue(
   now: number,
   freshDailyAllowance: number,
 ): UserDocument {
-  if (now <= doc.credits.dailyResetAt) return doc;
+  const resetAtMs = Date.parse(doc.credits.dailyResetAt);
+  if (Number.isFinite(resetAtMs) && now <= resetAtMs) return doc;
   return {
     ...doc,
     credits: {
       ...doc.credits,
       daily: freshDailyAllowance,
-      dailyResetAt: now + 24 * 60 * 60 * 1000,
+      dailyResetAt: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
     },
   };
 }
@@ -52,6 +57,10 @@ export function tryDeductCredits(doc: UserDocument, cost: number): CreditCheckRe
         ...doc,
         credits: { ...doc.credits, daily: doc.credits.daily - cost },
       },
+      chargedFrom: {
+        daily: cost,
+        monthly: 0,
+      },
     };
   }
   if (doc.plan === "pro" && doc.credits.monthly >= cost - doc.credits.daily) {
@@ -67,18 +76,26 @@ export function tryDeductCredits(doc: UserDocument, cost: number): CreditCheckRe
           monthly: doc.credits.monthly - fromMonthly,
         },
       },
+      chargedFrom: {
+        daily: fromDaily,
+        monthly: fromMonthly,
+      },
     };
   }
   return { ok: false, reason: "INSUFFICIENT" };
 }
 
 // On failure, return credits exactly. To use inside a Firestore transaction.
-export function refundCredits(doc: UserDocument, cost: number): UserDocument {
+export function refundCredits(
+  doc: UserDocument,
+  chargedFrom: { daily: number; monthly: number },
+): UserDocument {
   return {
     ...doc,
     credits: {
       ...doc.credits,
-      daily: doc.credits.daily + cost,
+      daily: doc.credits.daily + chargedFrom.daily,
+      monthly: doc.credits.monthly + chargedFrom.monthly,
     },
   };
 }

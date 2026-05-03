@@ -1,5 +1,130 @@
 # DocMiniAItures - Estado actual del proyecto
 
+## 0) Actualización canónica (2026-05-03, Phase 2 Core monetizable)
+
+Esta sección **supersede** cualquier apartado anterior que entre en conflicto (especialmente secciones 11, 16, 17, 22, 23 y 25).
+
+### 0.1 Estado real verificado
+
+- `npm run lint`: OK
+- `npm run test`: OK (suite unitaria + smoke API)
+- `npm run build`: OK
+
+### 0.2 Lo que ya está implementado
+
+- Auth real con Firebase:
+  - cliente (`sign in` + ID token),
+  - servidor (`verifyIdToken` con Firebase Admin).
+- Firestore operativo para identidad, créditos, plan y estados de suscripción.
+- Gating server-side en `POST /api/generate`:
+  - auth obligatoria,
+  - validaciones de plan Free/Pro,
+  - débito atómico de créditos,
+  - reembolso explícito ante fallo de generación,
+  - errores de negocio (`401`, `402`, `429` y validaciones de plan).
+- Stripe core monetizable:
+  - `POST /api/billing/checkout`,
+  - `GET /api/billing/status`,
+  - `POST /api/webhooks/stripe` con verificación de firma y mutaciones en Firestore.
+- Persistencia de galería Pro en servidor:
+  - guardado de imágenes en **Firebase Storage**,
+  - índice `gallery` en `users/{uid}` con política FIFO (máx. 200).
+- Rate-limit mínimo para Free por IP (1 generación/día).
+- App Check server-side activable por entorno (toggle).
+- Logging estructurado para trazabilidad de créditos/webhooks/generación.
+
+### 0.3 Cambios funcionales de frontend ya activos
+
+- Página `/pricing` implementada.
+- Flujo de suscripción desde botón de pricing hacia Stripe Checkout.
+- Estado de suscripción reflejado en UI según `/api/billing/status`.
+- Página `/gallery` para usuarios Pro con consulta de imágenes generadas.
+- **Local history eliminado**: ya no se usa IndexedDB/localStorage para historial.
+
+### 0.4 Decisión de almacenamiento (actual)
+
+- Se descartó Cloudflare R2 para el sprint actual.
+- El almacenamiento vigente de imágenes Pro es **Firebase Storage**.
+
+### 0.5 Endpoints vigentes de negocio
+
+- `POST /api/generate`
+- `GET /api/user/credits`
+- `POST /api/billing/checkout`
+- `GET /api/billing/status`
+- `POST /api/webhooks/stripe`
+- `GET /api/gallery`
+
+### 0.6 Notas de alcance
+
+- Afiliados siguen fuera de sprint 1 (schema/preparación, sin activación comercial completa).
+- Política de retención/borrado de imágenes tras cancelación Pro: pendiente de definición de negocio.
+
+### 0.7 Actualizacion adicional (2026-05-03, supersede detalles anteriores en conflicto)
+
+#### Frontend y UX (estado real actual)
+- `DEFAULT_NANO_BANANA_PARAMS.aspect_ratio` ahora es `16:9`.
+- El panel de usuario final fue separado del panel de desarrollador:
+  - `User options` controla `Low priority mode` y resolucion orientada a negocio.
+  - `Developer parameters` es desplegable e incluye `aspect_ratio` y vista JSON de params efectivos.
+- `Reference images` esta debajo de `Prompt`.
+- El boton de generacion muestra coste de creditos y saldo (`Daily/Monthly`).
+- Se restauro la UI visual de `Estimated cost` (tarjetas) y de `Result` (preview de imagenes + descarga + metadata).
+- En cabecera de la home se muestra de nuevo: email, plan y creditos del usuario autenticado.
+
+#### Reglas de plan en UI de resolucion
+- Free:
+  - resolucion bloqueada en `512`.
+  - opciones superiores marcadas como `Pro feature`.
+  - `Low priority` forzado (sin descuento de creditos adicional por esta regla).
+- Pro:
+  - no se muestra la opcion `512` en selector principal.
+  - puede activar/desactivar `Low priority` con descuento de creditos.
+
+#### Mapeo funcional de resoluciones (UI -> params tecnicos)
+- `512` -> base `512`, sin upscale.
+- `1K` -> base `512` + upscale `1K`.
+- `2K` -> base `1K` + upscale `2K`.
+- `4K` -> base `1K` + upscale `4K`.
+
+#### Pricing y Gallery
+- `/pricing` ya no permite checkout cuando la suscripcion Pro ya esta activa/trialing:
+  - boton deshabilitado.
+  - texto `Already acquired`.
+- `/gallery` permite abrir cada entrada en modal con imagen grande, prompt completo, provider y fecha.
+
+#### Simulacion de desarrollador
+- `POST /api/generate` soporta modo simulacion en entorno no productivo:
+  - `success`: consume creditos y registra stats sin generar imagen real.
+  - `reject`: simula rechazo y ejecuta reembolso.
+
+#### Creditos y pricing dinamico
+- El coste de generacion ya no es fijo en runtime para todas las variantes de UI.
+- Formula activa:
+  - base: 100 creditos.
+  - `512`: -25%.
+  - `1K`: sin cambio.
+  - `2K`: +25%.
+  - `4K`: +50%.
+  - `low priority` en Pro: -25%.
+
+#### Fechas en Firestore (normalizacion completa)
+- Se unifico el formato de fechas a ISO string en documentos de negocio:
+  - `credits.dailyResetAt`.
+  - `credits.monthlyResetAt`.
+  - `subscriptionStart`.
+  - `subscriptionEnd`.
+  - `gallery[].createdAt`.
+- Se elimina el esquema dual anterior en nuevas escrituras.
+- `GET /api/gallery` normaliza entradas legacy al vuelo para compatibilidad temporal y orden correcto.
+
+#### Storage, stats y calidad
+- Persistencia Pro confirmada en Firebase Storage + indice `gallery` en Firestore.
+- Ajustado registro de stats para evitar desalineacion de `falGenerations` en fallback/proveedor efectivo.
+- Estado verificado:
+  - `npm run lint`: OK
+  - `npm run test`: OK
+  - `npm run build`: OK
 ## 1) Visión general del producto
 
 MiniAItures es una plataforma web de generación de miniaturas para YouTube con IA, construida en Next.js. El usuario introduce un prompt (y opcionalmente imágenes de referencia) y el sistema genera una imagen optimizada para miniatura usando Nano Banana 2 vía Gemini API, con upscaling posterior opcional vía fal.ai.
@@ -916,3 +1041,4 @@ Si falla la generación:
 | 4 | Pool mensual Pro: 2.000 vs 3.000 créditos | Implementación del sistema de créditos |
 | 5 | Caducidad del programa de afiliados: permanente sin condiciones vs condicionado | Contratos con afiliados, implementación en Stripe |
 | 6 | Política de retención de imágenes en R2 al cancelar suscripción Pro | UX de cancelación, costes de almacenamiento a largo plazo |
+

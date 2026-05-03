@@ -40,7 +40,7 @@ export const DEFAULT_NANO_BANANA_PARAMS: NanoBananaParams = {
   num_images: 1,
   flex_mode: false,
   enable_google_search: false,
-  aspect_ratio: "1:1",
+  aspect_ratio: "16:9",
   resolution: "1K",
   upscale_enabled: false,
   upscale_resolution: "2K",
@@ -177,6 +177,12 @@ export interface GenerateResponse {
   startedAt: string;
   endedAt: string;
   createdAt: string;
+  userPlan?: "free" | "pro";
+  creditsRemaining?: {
+    daily: number;
+    monthly: number;
+  };
+  watermarkApplied?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,7 +218,7 @@ export function validateGenerationRequest(
   const enable_google_search = Boolean(paramsRaw.enable_google_search);
   const upscale_enabled = Boolean(paramsRaw.upscale_enabled);
 
-  const aspect_ratio = enumOrDefault(paramsRaw.aspect_ratio, ASPECT_RATIOS, "1:1");
+  const aspect_ratio = enumOrDefault(paramsRaw.aspect_ratio, ASPECT_RATIOS, "16:9");
   const resolution = enumOrDefault(paramsRaw.resolution, RESOLUTIONS, "1K");
   const upscale_resolution = enumOrDefault(
     paramsRaw.upscale_resolution,

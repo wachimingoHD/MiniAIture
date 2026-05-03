@@ -1,25 +1,7 @@
-// Phase 2 - Firebase Admin (server-side)
-// =============================================================================
-// Initializes Firebase Admin SDK for server-side token verification and
-// Firestore writes. The admin credential should be a JSON service account
-// stored as a single-line env var FIREBASE_ADMIN_CREDENTIALS.
-//
-// To activate Phase 2:
-//   1. In Firebase console > Project settings > Service accounts, generate a
-//      new private key. Save the JSON content (single line) into .env.local
-//      as FIREBASE_ADMIN_CREDENTIALS.
-//   2. Install: `npm install firebase-admin`
-//   3. Uncomment the implementation below.
-// =============================================================================
-
-// import {
-//   initializeApp,
-//   cert,
-//   getApps,
-//   type App,
-// } from "firebase-admin/app";
-// import { getAuth, type Auth } from "firebase-admin/auth";
-// import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { applicationDefault, cert, getApps, initializeApp, type App } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getAppCheck } from "firebase-admin/app-check";
 
 export interface VerifiedUser {
   uid: string;
@@ -27,12 +9,77 @@ export interface VerifiedUser {
   emailVerified: boolean;
 }
 
-export async function verifyIdToken(_idToken: string): Promise<VerifiedUser | null> {
-  // TODO[Phase 2]: replace with admin.auth().verifyIdToken(idToken)
-  return null;
+let cachedApp: App | null | undefined;
+
+function parseServiceAccountFromEnv(): Record<string, unknown> | null {
+  const raw = process.env.FIREBASE_ADMIN_CREDENTIALS;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (parsed.private_key && typeof parsed.private_key === "string") {
+      parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
-export function adminFirestore(): null {
-  // TODO[Phase 2]: replace with admin.firestore()
-  return null;
+export function getAdminApp(): App | null {
+  if (cachedApp !== undefined) return cachedApp;
+
+  const existing = getApps()[0];
+  if (existing) {
+    cachedApp = existing;
+    return cachedApp;
+  }
+
+  const serviceAccount = parseServiceAccountFromEnv();
+  const storageBucket =
+    process.env.FIREBASE_STORAGE_BUCKET ??
+    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+  try {
+    cachedApp = serviceAccount
+      ? initializeApp({
+          credential: cert(serviceAccount as Parameters<typeof cert>[0]),
+          storageBucket,
+        })
+      : initializeApp({ credential: applicationDefault(), storageBucket });
+    return cachedApp;
+  } catch {
+    cachedApp = null;
+    return null;
+  }
+}
+
+export async function verifyIdToken(idToken: string): Promise<VerifiedUser | null> {
+  const app = getAdminApp();
+  if (!app) return null;
+  try {
+    const decoded = await getAuth(app).verifyIdToken(idToken);
+    return {
+      uid: decoded.uid,
+      email: decoded.email,
+      emailVerified: Boolean(decoded.email_verified),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function adminFirestore(): Firestore | null {
+  const app = getAdminApp();
+  if (!app) return null;
+  return getFirestore(app);
+}
+
+export async function verifyAppCheckToken(token: string): Promise<boolean> {
+  const app = getAdminApp();
+  if (!app) return false;
+  try {
+    await getAppCheck(app).verifyToken(token);
+    return true;
+  } catch {
+    return false;
+  }
 }
