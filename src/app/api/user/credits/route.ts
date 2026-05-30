@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminFirestore, verifyIdToken } from "@/lib/auth/firebase-admin";
 import { getRuntimeConfig } from "@/lib/config/runtime";
 import { getOrCreateUserDocument } from "@/lib/firestore/users";
-import { applyDailyResetIfDue } from "@/lib/firestore/credits";
+import { applyResetsIfDue } from "@/lib/firestore/credits";
+import { writeCreditTransactionInTx } from "@/lib/firestore/credit-transactions";
 import type { UserDocument } from "@/lib/firestore/schema";
 import { readBearerToken } from "@/lib/server/request";
 
@@ -28,22 +29,47 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const cfg = getRuntimeConfig();
   const initial = await getOrCreateUserDocument(db, { uid: user.uid, email: user.email });
-  const allowance = initial.plan === "pro" ? cfg.credits.proDaily : cfg.credits.freeDaily;
-  const resetMs = Date.parse(initial.credits.dailyResetAt);
-  const needsReset = !Number.isFinite(resetMs) || Date.now() > resetMs;
+  const dailyResetMs = Date.parse(initial.credits.dailyResetAt);
+  const dailyDue = !Number.isFinite(dailyResetMs) || Date.now() > dailyResetMs;
+  const monthlyResetMs = Date.parse(initial.credits.monthlyResetAt);
+  const monthlyDue =
+    initial.plan === "pro" && (!Number.isFinite(monthlyResetMs) || Date.now() > monthlyResetMs);
 
   // Only run a transaction when a reset is actually due — the read-only path
   // is hit on every page load and shouldn't take a lock.
   let finalDoc: UserDocument = initial;
-  if (needsReset) {
+  if (dailyDue || monthlyDue) {
     finalDoc = await db.runTransaction(async (tx) => {
       const ref = db.collection("users").doc(user.uid);
       const snap = await tx.get(ref);
       if (!snap.exists) return initial;
       const current = snap.data() as UserDocument;
       const allowanceForCurrent = current.plan === "pro" ? cfg.credits.proDaily : cfg.credits.freeDaily;
-      const reset = applyDailyResetIfDue(current, Date.now(), allowanceForCurrent);
-      if (reset !== current) {
+      const { doc: reset, info } = applyResetsIfDue(
+        current,
+        Date.now(),
+        allowanceForCurrent,
+        cfg.credits.proMonthly,
+      );
+      if (info.dailyResetApplied) {
+        writeCreditTransactionInTx(db, tx, {
+          userId: user.uid,
+          type: "reset",
+          amount: info.dailyAfter - info.dailyBefore,
+          balanceBefore: info.dailyBefore + info.monthlyBefore,
+          balanceAfter: info.dailyAfter + info.monthlyBefore,
+        });
+      }
+      if (info.monthlyResetApplied) {
+        writeCreditTransactionInTx(db, tx, {
+          userId: user.uid,
+          type: "reset",
+          amount: info.monthlyAfter - info.monthlyBefore,
+          balanceBefore: info.dailyAfter + info.monthlyBefore,
+          balanceAfter: info.dailyAfter + info.monthlyAfter,
+        });
+      }
+      if (info.dailyResetApplied || info.monthlyResetApplied) {
         tx.set(ref, reset, { merge: true });
       }
       return reset;
@@ -52,6 +78,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   return NextResponse.json({
     uid: user.uid,
+    displayName: finalDoc.displayName ?? null,
     plan: finalDoc.plan,
     credits: finalDoc.credits,
     subscriptionStatus: finalDoc.subscriptionStatus ?? null,

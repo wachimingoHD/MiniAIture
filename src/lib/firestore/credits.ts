@@ -41,6 +41,63 @@ export function applyDailyResetIfDue(
   };
 }
 
+// Reset mensual (doc §2.3). Solo aplica a usuarios PRO y solo si venció.
+export function applyMonthlyResetIfDue(
+  doc: UserDocument,
+  now: number,
+  freshMonthlyAllowance: number,
+): UserDocument {
+  if (doc.plan !== "pro") return doc;
+  const resetAtMs = Date.parse(doc.credits.monthlyResetAt);
+  if (Number.isFinite(resetAtMs) && now <= resetAtMs) return doc;
+  return {
+    ...doc,
+    credits: {
+      ...doc.credits,
+      monthly: freshMonthlyAllowance,
+      monthlyResetAt: new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+  };
+}
+
+// Información de qué resets se aplicaron, para escribir creditTransactions
+// de tipo "reset" (doc §2.2 / §2.3).
+export interface ResetInfo {
+  dailyResetApplied: boolean;
+  monthlyResetApplied: boolean;
+  dailyBefore: number;
+  dailyAfter: number;
+  monthlyBefore: number;
+  monthlyAfter: number;
+}
+
+// Aplica reset diario y mensual (si vencen) y devuelve el doc resultante junto
+// con los metadatos para auditoría.
+export function applyResetsIfDue(
+  doc: UserDocument,
+  now: number,
+  freshDailyAllowance: number,
+  freshMonthlyAllowance: number,
+): { doc: UserDocument; info: ResetInfo } {
+  const dailyBefore = doc.credits.daily;
+  const monthlyBefore = doc.credits.monthly;
+
+  const afterDaily = applyDailyResetIfDue(doc, now, freshDailyAllowance);
+  const afterMonthly = applyMonthlyResetIfDue(afterDaily, now, freshMonthlyAllowance);
+
+  return {
+    doc: afterMonthly,
+    info: {
+      dailyResetApplied: afterDaily.credits.dailyResetAt !== doc.credits.dailyResetAt,
+      monthlyResetApplied: afterMonthly.credits.monthlyResetAt !== doc.credits.monthlyResetAt,
+      dailyBefore,
+      dailyAfter: afterMonthly.credits.daily,
+      monthlyBefore,
+      monthlyAfter: afterMonthly.credits.monthly,
+    },
+  };
+}
+
 // Returns the cost in credits for a given action. Per spec, all generations
 // cost the same regardless of resolution / provider.
 export function creditsForAction(_action: "generate"): number {

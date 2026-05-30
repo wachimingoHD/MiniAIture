@@ -9,7 +9,12 @@ import {
   type UserDocument,
   buildInitialUserDocument,
 } from "@/lib/firestore/schema";
-import { applyDailyResetIfDue, refundCredits, tryDeductCredits } from "@/lib/firestore/credits";
+import { applyResetsIfDue, refundCredits, tryDeductCredits } from "@/lib/firestore/credits";
+import { writeCreditTransactionInTx } from "@/lib/firestore/credit-transactions";
+
+function totalCredits(doc: UserDocument): number {
+  return doc.credits.daily + doc.credits.monthly;
+}
 
 function userRef(db: Firestore, uid: string): DocumentReference {
   return db.collection(USERS_COLLECTION).doc(uid);
@@ -61,6 +66,7 @@ export async function deductGenerationCredits(db: Firestore, args: {
   uid: string;
   email?: string;
   cost: number;
+  generationId?: string | null;
 }): Promise<DeductCreditsResult> {
   const { credits } = getRuntimeConfig();
   const ref = userRef(db, args.uid);
@@ -77,8 +83,36 @@ export async function deductGenerationCredits(db: Firestore, args: {
           proMonthlyCredits: credits.proMonthly,
         });
 
-    const resetAllowance = current.plan === "pro" ? credits.proDaily : credits.freeDaily;
-    const afterReset = applyDailyResetIfDue(current, Date.now(), resetAllowance);
+    const dailyAllowance = current.plan === "pro" ? credits.proDaily : credits.freeDaily;
+    const { doc: afterReset, info } = applyResetsIfDue(
+      current,
+      Date.now(),
+      dailyAllowance,
+      credits.proMonthly,
+    );
+
+    // Auditoría de resets (doc §2.2 / §2.3): un creditTransaction "reset" por
+    // cada reset aplicado.
+    if (info.dailyResetApplied) {
+      writeCreditTransactionInTx(db, tx, {
+        userId: args.uid,
+        type: "reset",
+        amount: info.dailyAfter - info.dailyBefore,
+        balanceBefore: info.dailyBefore + info.monthlyBefore,
+        balanceAfter: info.dailyAfter + info.monthlyBefore,
+      });
+    }
+    if (info.monthlyResetApplied) {
+      writeCreditTransactionInTx(db, tx, {
+        userId: args.uid,
+        type: "reset",
+        amount: info.monthlyAfter - info.monthlyBefore,
+        balanceBefore: info.dailyAfter + info.monthlyBefore,
+        balanceAfter: info.dailyAfter + info.monthlyAfter,
+      });
+    }
+
+    const balanceBefore = totalCredits(afterReset);
     const check = tryDeductCredits(afterReset, args.cost);
     if (!check.ok || !check.newDoc) {
       tx.set(ref, afterReset, { merge: true });
@@ -90,6 +124,16 @@ export async function deductGenerationCredits(db: Firestore, args: {
         chargedFrom: { daily: 0, monthly: 0 },
       };
     }
+
+    // Auditoría del gasto (doc §2.1): creditTransaction "generation".
+    writeCreditTransactionInTx(db, tx, {
+      userId: args.uid,
+      type: "generation",
+      amount: -args.cost,
+      balanceBefore,
+      balanceAfter: totalCredits(check.newDoc),
+      generationId: args.generationId ?? null,
+    });
 
     tx.set(ref, check.newDoc, { merge: true });
       return {
@@ -105,6 +149,7 @@ export async function deductGenerationCredits(db: Firestore, args: {
 export async function refundGenerationCredits(db: Firestore, args: {
   uid: string;
   chargedFrom: { daily: number; monthly: number };
+  generationId?: string | null;
 }): Promise<void> {
   const ref = userRef(db, args.uid);
   await db.runTransaction(async (tx) => {
@@ -112,6 +157,17 @@ export async function refundGenerationCredits(db: Firestore, args: {
     if (!snap.exists) return;
     const current = snap.data() as UserDocument;
     const refunded = refundCredits(current, args.chargedFrom);
+    const amount = args.chargedFrom.daily + args.chargedFrom.monthly;
+    if (amount > 0) {
+      writeCreditTransactionInTx(db, tx, {
+        userId: args.uid,
+        type: "refund",
+        amount,
+        balanceBefore: totalCredits(current),
+        balanceAfter: totalCredits(refunded),
+        generationId: args.generationId ?? null,
+      });
+    }
     tx.set(ref, refunded, { merge: true });
   });
 }
