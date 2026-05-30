@@ -39,10 +39,21 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // FREE: tope duro de 30 sin paginación. PRO: páginas de 30 con cursor.
   const limit = isPro ? PRO_PAGE_SIZE : FREE_GALLERY_LIMIT;
 
-  const items = await getUserGenerations(db, user.uid, {
-    limit,
-    startAfterCreatedAt: isPro ? cursor : undefined,
-  });
+  let items;
+  try {
+    items = await getUserGenerations(db, user.uid, {
+      limit,
+      startAfterCreatedAt: isPro ? cursor : undefined,
+    });
+  } catch (err) {
+    // Falta el índice compuesto (userId + createdAt): degradar a vacío en vez de 500.
+    const needsIndex = String((err as Error).message).includes("FAILED_PRECONDITION");
+    console.warn("getUserGenerations falló:", (err as Error).message);
+    return NextResponse.json(
+      { plan: doc.plan, count: 0, limited: !isPro, nextCursor: null, images: [], error: needsIndex ? "index_required" : "query_failed" },
+      { status: 200 },
+    );
+  }
 
   const nextCursor =
     isPro && items.length === PRO_PAGE_SIZE ? items[items.length - 1].createdAt : null;

@@ -23,11 +23,22 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const cursor = req.nextUrl.searchParams.get("cursor") ?? undefined;
   const nicho = req.nextUrl.searchParams.get("nicho");
 
-  const items = await getPublicGenerations(db, {
-    limit: PAGE_SIZE,
-    startAfterCreatedAt: sort === "recent" ? cursor : undefined,
-    orderBy: sort === "popular" ? "timesStyleCopied" : "createdAt",
-  });
+  let items;
+  try {
+    items = await getPublicGenerations(db, {
+      limit: PAGE_SIZE,
+      startAfterCreatedAt: sort === "recent" ? cursor : undefined,
+      orderBy: sort === "popular" ? "timesStyleCopied" : "createdAt",
+    });
+  } catch (err) {
+    // Falta el índice compuesto de Firestore: degradar a vacío en vez de 500.
+    const needsIndex = String((err as Error).message).includes("FAILED_PRECONDITION");
+    console.warn("getPublicGenerations falló:", (err as Error).message);
+    return NextResponse.json(
+      { count: 0, nextCursor: null, images: [], error: needsIndex ? "index_required" : "query_failed" },
+      { status: 200 },
+    );
+  }
 
   // Filtro por nicho en memoria (la query principal ya usa el índice de isPublic).
   const filtered = nicho ? items.filter((g) => g.nicho === nicho) : items;
