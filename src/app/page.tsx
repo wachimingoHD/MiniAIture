@@ -32,6 +32,29 @@ import {
 
 type StyleMode = "preset" | "custom" | "gallery";
 
+const FORM_STORAGE_KEY = "miniaitura:genform:v1";
+
+interface PersistedReference {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  base64: string;
+}
+
+interface PersistedForm {
+  params: NanoBananaParams;
+  videoTitle: string;
+  referenceInstructions: string;
+  styleMode: StyleMode;
+  selectedPresetId: string | null;
+  customStyle: string;
+  galleryStyle: { id: string; prompt: string } | null;
+  userResolution: UserFacingResolution;
+  lowPriorityMode: boolean;
+  referenceImages: PersistedReference[];
+}
+
 interface UploadedReference {
   id: string;
   filename: string;
@@ -134,6 +157,84 @@ export default function HomePage() {
       }
     })();
   }, []);
+
+  // -------- Persistencia del formulario (fix: no perder el texto al navegar) --------
+  // El formulario vive en una ruta distinta a la galería; navegar desmonta el
+  // componente y se perdía el estado. Guardamos en sessionStorage y restauramos
+  // al montar, de modo que todos los campos (incluida la imagen subida y el
+  // estilo) quedan intactos al volver.
+  const formHydratedRef = useRef(false);
+
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- hidratación desde sessionStorage tras el primer render (evita mismatch SSR) */
+    try {
+      const raw = sessionStorage.getItem(FORM_STORAGE_KEY);
+      if (raw) {
+        const s = JSON.parse(raw) as Partial<PersistedForm>;
+        if (s.params) setParams(s.params);
+        if (typeof s.videoTitle === "string") setVideoTitle(s.videoTitle);
+        if (typeof s.referenceInstructions === "string") setReferenceInstructions(s.referenceInstructions);
+        if (s.styleMode) setStyleMode(s.styleMode);
+        if (s.selectedPresetId !== undefined) setSelectedPresetId(s.selectedPresetId);
+        if (typeof s.customStyle === "string") setCustomStyle(s.customStyle);
+        if (s.galleryStyle !== undefined) setGalleryStyle(s.galleryStyle);
+        if (s.userResolution) setUserResolution(s.userResolution);
+        if (typeof s.lowPriorityMode === "boolean") setLowPriorityMode(s.lowPriorityMode);
+        if (Array.isArray(s.referenceImages)) {
+          setReferenceImages(
+            s.referenceImages.map((r) => ({ ...r, previewUrl: `data:${r.mimeType};base64,${r.base64}` })),
+          );
+        }
+      }
+    } catch {
+      // sessionStorage no disponible o JSON corrupto: empezar limpio.
+    }
+    formHydratedRef.current = true;
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+
+  useEffect(() => {
+    if (!formHydratedRef.current) return;
+    const core = {
+      params,
+      videoTitle,
+      referenceInstructions,
+      styleMode,
+      selectedPresetId,
+      customStyle,
+      galleryStyle,
+      userResolution,
+      lowPriorityMode,
+    };
+    const refs = referenceImages.map((r) => ({
+      id: r.id,
+      filename: r.filename,
+      mimeType: r.mimeType,
+      size: r.size,
+      base64: r.base64,
+    }));
+    try {
+      sessionStorage.setItem(FORM_STORAGE_KEY, JSON.stringify({ ...core, referenceImages: refs }));
+    } catch {
+      // Cuota excedida (imágenes grandes): guardar sin imágenes.
+      try {
+        sessionStorage.setItem(FORM_STORAGE_KEY, JSON.stringify({ ...core, referenceImages: [] }));
+      } catch {
+        // sin persistencia disponible
+      }
+    }
+  }, [
+    params,
+    videoTitle,
+    referenceInstructions,
+    styleMode,
+    selectedPresetId,
+    customStyle,
+    galleryStyle,
+    userResolution,
+    lowPriorityMode,
+    referenceImages,
+  ]);
 
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
