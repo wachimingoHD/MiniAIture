@@ -20,7 +20,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const doc = await getOrCreateUserDocument(db, { uid: user.uid, email: user.email });
+  const doc = await getOrCreateUserDocument(db, { uid: user.uid, email: user.email, displayName: user.name });
   if (doc.plan !== "pro") {
     return NextResponse.json(
       {

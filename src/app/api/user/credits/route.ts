@@ -28,7 +28,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   const cfg = getRuntimeConfig();
-  const initial = await getOrCreateUserDocument(db, { uid: user.uid, email: user.email });
+  const initial = await getOrCreateUserDocument(db, { uid: user.uid, email: user.email, displayName: user.name });
   const dailyResetMs = Date.parse(initial.credits.dailyResetAt);
   const dailyDue = !Number.isFinite(dailyResetMs) || Date.now() > dailyResetMs;
   const monthlyResetMs = Date.parse(initial.credits.monthlyResetAt);

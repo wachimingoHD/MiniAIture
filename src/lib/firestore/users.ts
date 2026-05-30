@@ -27,6 +27,7 @@ function normalizeEmail(email: string | undefined): string {
 export async function getOrCreateUserDocument(db: Firestore, args: {
   uid: string;
   email?: string;
+  displayName?: string; // nombre de Google al registrarse (doc §7.1)
 }): Promise<UserDocument> {
   const { credits } = getRuntimeConfig();
   const ref = userRef(db, args.uid);
@@ -41,6 +42,7 @@ export async function getOrCreateUserDocument(db: Firestore, args: {
 
     const initial = buildInitialUserDocument({
       email: normalizeEmail(args.email),
+      displayName: args.displayName?.trim() || undefined,
       plan: "free",
       freeDailyCredits: credits.freeDaily,
       proDailyCredits: credits.proDaily,

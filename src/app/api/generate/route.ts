@@ -156,6 +156,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const userDoc = await getOrCreateUserDocument(db, {
       uid: authenticatedUser.uid,
       email: authenticatedUser.email,
+      displayName: authenticatedUser.name,
     });
     userPlan = userDoc.plan;
 
