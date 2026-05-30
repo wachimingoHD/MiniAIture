@@ -1,0 +1,43 @@
+// Galería pública (doc §6.2). No requiere autenticación.
+// GET /api/gallery/public?cursor=<createdAtIso>&sort=recent|popular&nicho=...
+// =============================================================================
+
+import { NextRequest, NextResponse } from "next/server";
+import { adminFirestore } from "@/lib/auth/firebase-admin";
+import { getPublicGenerations } from "@/lib/firestore/generations";
+
+export const runtime = "nodejs";
+
+const PAGE_SIZE = 24;
+
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const db = adminFirestore();
+  if (!db) {
+    return NextResponse.json(
+      { error: "Firebase Admin not configured. Set FIREBASE_ADMIN_CREDENTIALS." },
+      { status: 500 },
+    );
+  }
+
+  const sort = req.nextUrl.searchParams.get("sort") === "popular" ? "popular" : "recent";
+  const cursor = req.nextUrl.searchParams.get("cursor") ?? undefined;
+  const nicho = req.nextUrl.searchParams.get("nicho");
+
+  const items = await getPublicGenerations(db, {
+    limit: PAGE_SIZE,
+    startAfterCreatedAt: sort === "recent" ? cursor : undefined,
+    orderBy: sort === "popular" ? "timesStyleCopied" : "createdAt",
+  });
+
+  // Filtro por nicho en memoria (la query principal ya usa el índice de isPublic).
+  const filtered = nicho ? items.filter((g) => g.nicho === nicho) : items;
+
+  const nextCursor =
+    sort === "recent" && items.length === PAGE_SIZE ? items[items.length - 1].createdAt : null;
+
+  return NextResponse.json({
+    count: filtered.length,
+    nextCursor,
+    images: filtered,
+  });
+}
