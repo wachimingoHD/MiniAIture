@@ -22,12 +22,15 @@ import {
   type ReferenceImageInput,
 } from "@/lib/nanoBanana";
 import { computeGenerationCreditsCost, type UserFacingResolution } from "@/lib/firestore/credit-pricing";
+import { STYLE_PRESETS } from "@/lib/constants/style-presets";
 import {
   getCurrentIdToken,
   signInWithGoogle,
   signOutUser,
   subscribeToAuthState,
 } from "@/lib/auth/firebase-client";
+
+type StyleMode = "preset" | "custom" | "gallery";
 
 interface UploadedReference {
   id: string;
@@ -92,6 +95,46 @@ export default function HomePage() {
   const [devSimReject, setDevSimReject] = useState(false);
   const [devOpen, setDevOpen] = useState(false);
 
+  // Campos del formulario (doc §4)
+  const [videoTitle, setVideoTitle] = useState(""); // campo 1
+  const [referenceInstructions, setReferenceInstructions] = useState(""); // campo 3
+  const [styleMode, setStyleMode] = useState<StyleMode>("preset"); // campo 4
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+  const [customStyle, setCustomStyle] = useState("");
+  const [galleryStyle, setGalleryStyle] = useState<{ id: string; prompt: string } | null>(null);
+  const [publishMsg, setPublishMsg] = useState<string | null>(null);
+
+  // Estilo efectivo derivado de la selección del campo 4.
+  const styleSelection = useMemo(() => {
+    if (styleMode === "preset" && selectedPresetId) {
+      const p = STYLE_PRESETS.find((x) => x.id === selectedPresetId);
+      return { styleType: "preset" as const, styleId: selectedPresetId, stylePrompt: p?.prompt ?? "", nicho: p?.nicho ?? null };
+    }
+    if (styleMode === "gallery" && galleryStyle) {
+      return { styleType: "gallery" as const, styleId: galleryStyle.id, stylePrompt: galleryStyle.prompt, nicho: null };
+    }
+    return { styleType: "custom" as const, styleId: null, stylePrompt: customStyle, nicho: null };
+  }, [styleMode, selectedPresetId, customStyle, galleryStyle]);
+
+  // Precarga de estilo desde la galería pública (doc §6.3, ?styleFrom=<id>).
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("styleFrom");
+    if (!id) return;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/generations/${id}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { stylePrompt?: string | null };
+        if (data.stylePrompt) {
+          setStyleMode("gallery");
+          setGalleryStyle({ id, prompt: data.stylePrompt });
+        }
+      } catch {
+        // ignorar: la precarga es opcional
+      }
+    })();
+  }, []);
+
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const estimateAbortRef = useRef<AbortController | null>(null);
@@ -119,6 +162,10 @@ export default function HomePage() {
       resolution: effectiveResolution,
     });
   }, [effectiveLowPriority, effectiveResolution, pricingPlan]);
+
+  const insufficientCredits = creditSnapshot
+    ? creditSnapshot.daily + creditSnapshot.monthly < creditsCost
+    : false;
 
   useEffect(() => {
     const unsubscribe = subscribeToAuthState(async (user) => {
@@ -232,6 +279,14 @@ export default function HomePage() {
           userFacingResolution: effectiveResolution,
           lowPriorityMode: effectiveLowPriority,
           devSimulationMode,
+          // Campos del enhancer / generations (doc §3.3 / §4 / §10)
+          videoTitle: videoTitle.trim() || null,
+          userPrompt: derivedParams.prompt,
+          referenceInstructions: referenceImages.length > 0 ? referenceInstructions.trim() || null : null,
+          styleType: styleSelection.styleType,
+          styleId: styleSelection.styleId,
+          stylePrompt: styleSelection.stylePrompt,
+          nicho: styleSelection.nicho,
         }),
       });
       const text = await res.text();
@@ -281,44 +336,164 @@ export default function HomePage() {
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
         <section className="space-y-5">
-          <Panel title="Prompt">
-            <textarea value={params.prompt} onChange={(e) => setParams({ ...params, prompt: e.target.value })} placeholder="Describe the thumbnail you want" rows={5} className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm" />
+          {/* Campo 1 — Título del vídeo (opcional) */}
+          <Panel title="Título del vídeo" subtitle="opcional">
+            <input
+              type="text"
+              value={videoTitle}
+              maxLength={200}
+              onChange={(e) => setVideoTitle(e.target.value)}
+              placeholder="¿Cuál es el título de tu vídeo? (opcional)"
+              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm"
+            />
           </Panel>
 
-          <Panel title="Reference images" subtitle={`${referenceImages.length}/${MAX_REFERENCE_IMAGES} files, ${formatBytes(totalReferenceBytes)} of ${formatBytes(MAX_REFERENCE_IMAGES_TOTAL_BYTES)}`}>
+          {/* Campo 2 — Descripción del contenido (obligatorio) */}
+          <Panel title="Descripción del contenido">
+            <textarea
+              value={params.prompt}
+              maxLength={2000}
+              onChange={(e) => setParams({ ...params, prompt: e.target.value })}
+              placeholder="Describe qué quieres en tu miniatura..."
+              rows={5}
+              className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm"
+            />
+          </Panel>
+
+          {/* Campo 3 — Imagen de referencia (opcional) */}
+          <Panel title="Imagen de referencia" subtitle={`opcional · ${referenceImages.length}/${MAX_REFERENCE_IMAGES} · ${formatBytes(totalReferenceBytes)}`}>
             <div className={`rounded-md border border-dashed px-4 py-5 text-center ${isDragging ? "border-[var(--color-accent)]" : "border-[var(--color-border-strong)]"}`} onDrop={(e: DragEvent<HTMLDivElement>) => { e.preventDefault(); setIsDragging(false); void addReferenceFiles(e.dataTransfer.files); }} onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }} onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}>
-              <button type="button" className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm" onClick={() => fileInputRef.current?.click()}>Browse files</button>
-              <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e: ChangeEvent<HTMLInputElement>) => { if (e.target.files?.length) void addReferenceFiles(e.target.files); e.target.value = ""; }} />
+              <button type="button" className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm" onClick={() => fileInputRef.current?.click()}>Subir imagen</button>
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e: ChangeEvent<HTMLInputElement>) => { if (e.target.files?.length) void addReferenceFiles(e.target.files); e.target.value = ""; }} />
             </div>
             {referenceError && <p className="mt-2 text-xs text-[var(--color-danger)]">{referenceError}</p>}
+            {referenceImages.length > 0 && (
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {referenceImages.map((ref) => (
+                    <div key={ref.id} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={ref.previewUrl} alt={ref.filename} className="h-16 w-16 rounded-md border border-[var(--color-border)] object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setReferenceImages((prev) => prev.filter((x) => x.id !== ref.id))}
+                        className="absolute -right-1.5 -top-1.5 rounded-full border border-[var(--color-border-strong)] bg-[var(--color-bg-panel)] px-1.5 text-xs"
+                        aria-label="Eliminar imagen"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <textarea
+                  value={referenceInstructions}
+                  maxLength={500}
+                  onChange={(e) => setReferenceInstructions(e.target.value)}
+                  placeholder="Instrucciones sobre esta imagen (ej: 'quiero esta cara pero sorprendida')"
+                  rows={2}
+                  className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2 text-sm"
+                />
+              </div>
+            )}
           </Panel>
 
-          <Panel title="User options">
-            <div className="space-y-4">
-              <label className="flex items-center justify-between text-sm">
-                <span>{isFreePlan ? "Low priority mode" : "Low priority mode (-25% credits)"}</span>
-                <input type="checkbox" checked={effectiveLowPriority} disabled={planLabel === "free"} onChange={(e) => setLowPriorityMode(e.target.checked)} />
-              </label>
-              {planLabel === "free" && <p className="text-xs text-[var(--color-text-muted)]">Free users always run in low priority mode and cannot disable it.</p>}
+          {/* Campo 4 — Estilo visual */}
+          <Panel title="Estilo visual">
+            <div className="mb-3 flex gap-1.5">
+              {([["preset", "Presets"], ["custom", "Personalizado"], ["gallery", "Galería"]] as Array<[StyleMode, string]>).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setStyleMode(mode)}
+                  className={`rounded-md border px-2.5 py-1 text-xs ${styleMode === mode ? "border-[var(--color-accent)] text-[var(--color-accent)]" : "border-[var(--color-border-strong)]"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
-              <div>
-                <p className="mb-2 text-xs uppercase tracking-wide text-[var(--color-text-muted)]">Resolution</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {RESOLUTION_OPTIONS.map((opt) => {
-                    if (planLabel === "pro" && opt.value === "512") return null;
-                    const disabled = planLabel === "free" && opt.value !== "512";
-                    const active = effectiveResolution === opt.value;
-                    const freeHint = opt.value === "512" ? "Free included" : "Pro feature";
-                    const hint = planLabel === "free" ? freeHint : opt.creditsHint;
-                    return (
-                      <button key={opt.value} type="button" disabled={disabled} onClick={() => setUserResolution(opt.value)} className={`rounded-md border px-2 py-2 text-xs ${active ? "border-[var(--color-accent)] text-[var(--color-accent)]" : "border-[var(--color-border-strong)]"} disabled:opacity-40`}>
-                        <span className="block font-semibold">{opt.label}</span>
-                        <span className="block text-[10px] text-[var(--color-text-muted)]">{hint}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+            {styleMode === "preset" && (
+              <div className="grid grid-cols-2 gap-2">
+                {STYLE_PRESETS.map((preset) => {
+                  const active = selectedPresetId === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setSelectedPresetId(preset.id)}
+                      className={`rounded-md border p-2 text-left text-xs ${active ? "border-[var(--color-accent)]" : "border-[var(--color-border-strong)]"}`}
+                    >
+                      <span className="block font-semibold">{preset.name}</span>
+                      <span className="block text-[10px] text-[var(--color-text-muted)]">{preset.description}</span>
+                    </button>
+                  );
+                })}
               </div>
+            )}
+
+            {styleMode === "custom" && (
+              <textarea
+                value={customStyle}
+                onChange={(e) => setCustomStyle(e.target.value)}
+                placeholder="Describe el estilo visual que buscas..."
+                rows={3}
+                className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2 text-sm"
+              />
+            )}
+
+            {styleMode === "gallery" && (
+              galleryStyle ? (
+                <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2 text-xs text-[var(--color-text-secondary)]">
+                  <p className="mb-1 font-medium text-[var(--color-text-primary)]">Estilo de la galería</p>
+                  <p className="line-clamp-3">{galleryStyle.prompt}</p>
+                </div>
+              ) : (
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  Abre la <Link href="/gallery" className="text-[var(--color-accent)] hover:underline">galería de la comunidad</Link> y pulsa &quot;Usar este estilo&quot;.
+                </p>
+              )
+            )}
+          </Panel>
+
+          {/* Campo 5 — Modo Fetch (solo PRO) + opciones */}
+          <Panel title="Opciones">
+            <div className="space-y-4">
+              {!isFreePlan && (
+                <div>
+                  <label className="flex items-center justify-between text-sm">
+                    <span>Modo de baja prioridad (Fetch)</span>
+                    <input type="checkbox" checked={lowPriorityMode} onChange={(e) => setLowPriorityMode(e.target.checked)} />
+                  </label>
+                  <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                    Tu miniatura se genera cuando hay disponibilidad. Puede tardar más. Ahorras 30 créditos.
+                    {lowPriorityMode ? " Coste: 100 → 70 créditos." : ""}
+                  </p>
+                </div>
+              )}
+
+              {!isFreePlan && (
+                <div>
+                  <p className="mb-2 text-xs uppercase tracking-wide text-[var(--color-text-muted)]">Resolución</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {RESOLUTION_OPTIONS.map((opt) => {
+                      if (opt.value === "512") return null;
+                      const active = effectiveResolution === opt.value;
+                      return (
+                        <button key={opt.value} type="button" onClick={() => setUserResolution(opt.value)} className={`rounded-md border px-2 py-2 text-xs ${active ? "border-[var(--color-accent)] text-[var(--color-accent)]" : "border-[var(--color-border-strong)]"}`}>
+                          <span className="block font-semibold">{opt.label}</span>
+                          <span className="block text-[10px] text-[var(--color-text-muted)]">{opt.creditsHint}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {isFreePlan && (
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  Plan FREE: resolución 512 y modo de baja prioridad automáticos.
+                </p>
+              )}
             </div>
           </Panel>
 
@@ -334,8 +509,12 @@ export default function HomePage() {
             </div>
           </details>
 
-          <button type="button" disabled={generating || !derivedParams.prompt.trim()} onClick={generate} className="w-full rounded-md bg-[var(--color-accent)] px-4 py-3 text-sm font-semibold text-black disabled:opacity-50">
-            {generating ? "Generating..." : `Generate thumbnail (${creditsCost} credits${creditSnapshot ? ` | Balance D ${creditSnapshot.daily} M ${creditSnapshot.monthly}` : ""})`}
+          <button type="button" disabled={generating || !derivedParams.prompt.trim() || insufficientCredits} onClick={generate} className="w-full rounded-md bg-[var(--color-accent)] px-4 py-3 text-sm font-semibold text-black disabled:opacity-50">
+            {generating
+              ? "Generando..."
+              : insufficientCredits
+                ? "Créditos insuficientes"
+                : `Generar (${creditsCost} créditos${creditSnapshot ? ` · saldo D ${creditSnapshot.daily} M ${creditSnapshot.monthly}` : ""})`}
           </button>
 
           {generationError && <div className="rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-3 text-xs">{generationError}</div>}
@@ -343,7 +522,14 @@ export default function HomePage() {
 
         <section className="space-y-6">
           <CostPanel estimate={estimate} estimating={estimating} hasPrompt={Boolean(derivedParams.prompt.trim())} signedIn={Boolean(authToken)} />
-          <ResultPanel result={result} generating={generating} />
+          <ResultPanel
+            result={result}
+            generating={generating}
+            isPro={planLabel === "pro"}
+            authToken={authToken}
+            publishMsg={publishMsg}
+            onPublishMsg={setPublishMsg}
+          />
         </section>
       </div>
     </main>
@@ -453,7 +639,90 @@ function CostCard({
   );
 }
 
-function ResultPanel({ result, generating }: { result: GenerateResponse | null; generating: boolean }) {
+function PublishControls({
+  result,
+  authToken,
+  publishMsg,
+  onPublishMsg,
+}: {
+  result: GenerateResponse;
+  authToken: string | null;
+  publishMsg: string | null;
+  onPublishMsg: (m: string | null) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const generationIds = (result as GenerateResponse & { generationIds?: string[] }).generationIds ?? [];
+  if (generationIds.length === 0) return null;
+
+  const publish = async () => {
+    if (!authToken) {
+      onPublishMsg("Inicia sesión para publicar.");
+      return;
+    }
+    setBusy(true);
+    onPublishMsg(null);
+    try {
+      const results = await Promise.all(
+        generationIds.map((id) =>
+          fetch(`/api/generations/${id}/publish`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${authToken}` },
+          }),
+        ),
+      );
+      const ok = results.every((r) => r.ok);
+      onPublishMsg(ok ? "Publicado en la galería de la comunidad." : "Algunas miniaturas no se pudieron publicar.");
+      setConfirming(false);
+    } catch (err) {
+      onPublishMsg((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-3 text-xs">
+      {!confirming ? (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 hover:border-[var(--color-accent)]"
+        >
+          Publicar en la galería de MiniAItura
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-[var(--color-text-secondary)]">
+            Acepto publicar mi miniatura en la galería pública de MiniAItura. Si el estilo es propio (custom),
+            otras personas podrán usar tu prompt de estilo como referencia.
+          </p>
+          <div className="flex gap-2">
+            <button type="button" disabled={busy} onClick={() => setConfirming(false)} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 disabled:opacity-50">Cancelar</button>
+            <button type="button" disabled={busy} onClick={() => void publish()} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 font-semibold text-black disabled:opacity-50">{busy ? "Publicando…" : "Publicar"}</button>
+          </div>
+        </div>
+      )}
+      {publishMsg && <p className="mt-2 text-[var(--color-text-muted)]">{publishMsg}</p>}
+    </div>
+  );
+}
+
+function ResultPanel({
+  result,
+  generating,
+  isPro,
+  authToken,
+  publishMsg,
+  onPublishMsg,
+}: {
+  result: GenerateResponse | null;
+  generating: boolean;
+  isPro: boolean;
+  authToken: string | null;
+  publishMsg: string | null;
+  onPublishMsg: (m: string | null) => void;
+}) {
   if (generating) {
     return (
       <Panel title="Result">
@@ -513,6 +782,9 @@ function ResultPanel({ result, generating }: { result: GenerateResponse | null; 
           </figure>
         ))}
       </div>
+      {isPro && (
+        <PublishControls result={result} authToken={authToken} publishMsg={publishMsg} onPublishMsg={onPublishMsg} />
+      )}
       <details className="mt-4 text-xs text-[var(--color-text-secondary)]">
         <summary className="cursor-pointer text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]">
           Generation metadata
