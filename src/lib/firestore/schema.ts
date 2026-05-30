@@ -18,7 +18,12 @@ export interface UserCredits {
 }
 
 export interface UserAffiliate {
+  // Código de afiliado que el usuario usó al registrarse (doc §1.1 `code`).
+  // `referredBy` se mantiene como alias histórico del mismo dato.
   referredBy?: string;
+  code?: string | null;
+  // Si este usuario es a su vez un afiliado (tiene su propio código en `affiliates`).
+  isAffiliate?: boolean;
   discountActive: boolean;
 }
 
@@ -31,6 +36,9 @@ export interface UserStats {
   falGenerations: number;
 }
 
+// @deprecated — las generaciones se han movido a la colección `generations`
+// (doc §1.2). Esta forma sólo se conserva para leer documentos antiguos durante
+// la migración (doc §1.6). Código nuevo NO debe escribir en `gallery`.
 export interface ImageEntry {
   url: string; // Firebase Storage public URL
   prompt: string;
@@ -39,6 +47,8 @@ export interface ImageEntry {
 }
 
 export interface UserDocument {
+  // Nombre público editable (doc §1.1 / §7). Default: nombre de Google al registrarse.
+  displayName?: string;
   email: string;
   plan: Plan;
   stripeCustomerId?: string;
@@ -49,8 +59,18 @@ export interface UserDocument {
   credits: UserCredits;
   affiliate?: UserAffiliate;
   stats: UserStats;
-  gallery: ImageEntry[]; // Pro-only, capped at 200 (FIFO)
+  /** @deprecated movido a la colección `generations`. Sólo lectura en migración. */
+  gallery?: ImageEntry[];
 }
+
+// ---------------------------------------------------------------------------
+// Nombres de colecciones (doc §1)
+// ---------------------------------------------------------------------------
+export const USERS_COLLECTION = "users";
+export const GENERATIONS_COLLECTION = "generations";
+export const CREDIT_TRANSACTIONS_COLLECTION = "creditTransactions";
+export const AFFILIATES_COLLECTION = "affiliates";
+export const RATE_LIMITS_COLLECTION = "rateLimits";
 
 export const MAX_PRO_GALLERY_ENTRIES = 200;
 
@@ -69,6 +89,7 @@ export const CREDITS_PER_IMAGE = 100;
 // ---------------------------------------------------------------------------
 export function buildInitialUserDocument(args: {
   email: string;
+  displayName?: string;
   plan?: Plan;
   referredBy?: string;
   freeDailyCredits?: number;
@@ -81,6 +102,7 @@ export function buildInitialUserDocument(args: {
   const proDailyCredits = args.proDailyCredits ?? PRO_DAILY_CREDITS_DEFAULT;
   const proMonthlyCredits = args.proMonthlyCredits ?? PRO_MONTHLY_POOL_DEFAULT;
   return {
+    displayName: args.displayName ?? deriveDefaultDisplayName(args.email),
     email: args.email,
     plan: args.plan ?? "free",
     credits: {
@@ -90,8 +112,8 @@ export function buildInitialUserDocument(args: {
       monthlyResetAt: new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString(),
     },
     affiliate: args.referredBy
-      ? { referredBy: args.referredBy, discountActive: true }
-      : { discountActive: false },
+      ? { referredBy: args.referredBy, code: args.referredBy, isAffiliate: false, discountActive: true }
+      : { code: null, isAffiliate: false, discountActive: false },
     stats: {
       totalImagesGenerated: 0,
       totalCreditsUsedFree: 0,
@@ -100,6 +122,11 @@ export function buildInitialUserDocument(args: {
       googleGenerations: 0,
       falGenerations: 0,
     },
-    gallery: [],
   };
+}
+
+// Fallback de displayName cuando no hay nombre de Google: parte local del email.
+export function deriveDefaultDisplayName(email: string): string {
+  const local = (email.split("@")[0] ?? "user").trim();
+  return local.length >= 3 ? local : `user_${local}`;
 }

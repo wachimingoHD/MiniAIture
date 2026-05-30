@@ -4,13 +4,12 @@ import type { Provider } from "@/lib/nanoBanana";
 import { getRuntimeConfig } from "@/lib/config/runtime";
 import {
   MAX_PRO_GALLERY_ENTRIES,
+  RATE_LIMITS_COLLECTION,
+  USERS_COLLECTION,
   type UserDocument,
   buildInitialUserDocument,
 } from "@/lib/firestore/schema";
 import { applyDailyResetIfDue, refundCredits, tryDeductCredits } from "@/lib/firestore/credits";
-
-const USERS_COLLECTION = "users";
-const RATE_LIMIT_COLLECTION = "rate_limits_free_ip_daily";
 
 function userRef(db: Firestore, uid: string): DocumentReference {
   return db.collection(USERS_COLLECTION).doc(uid);
@@ -221,6 +220,13 @@ function dailyRateLimitDocId(ip: string): string {
   return `${date}:${safeIp}`;
 }
 
+// Inicio del día siguiente en UTC (00:00). Usado como `expiresAt` para que la
+// Cloud Function / cron de limpieza (doc §1.5) pueda borrar documentos vencidos.
+function nextUtcMidnightIso(now: number): string {
+  const d = new Date(now);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 0, 0, 0)).toISOString();
+}
+
 export async function checkAndConsumeFreeIpRateLimit(db: Firestore, args: {
   ip: string;
 }): Promise<{ ok: boolean; remaining: number }> {
@@ -228,7 +234,7 @@ export async function checkAndConsumeFreeIpRateLimit(db: Firestore, args: {
   if (!cfg.freeIpRateLimitEnabled) return { ok: true, remaining: Number.POSITIVE_INFINITY };
 
   const max = cfg.freeIpRateLimitMaxPerDay;
-  const ref = db.collection(RATE_LIMIT_COLLECTION).doc(dailyRateLimitDocId(args.ip));
+  const ref = db.collection(RATE_LIMITS_COLLECTION).doc(dailyRateLimitDocId(args.ip));
   const result = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const currentCount = snap.exists ? Number((snap.data() as { count?: number }).count ?? 0) : 0;
@@ -242,6 +248,7 @@ export async function checkAndConsumeFreeIpRateLimit(db: Firestore, args: {
         count: currentCount + 1,
         ip: args.ip,
         updatedAt: FieldValue.serverTimestamp(),
+        expiresAt: nextUtcMidnightIso(Date.now()),
       },
       { merge: true },
     );

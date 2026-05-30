@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "migrate:gallery": "node --experimental-strip-types scripts/migrate-gallery-to-generations.ts"
   },
   "dependencies": {
     "firebase": "^12.12.1",
