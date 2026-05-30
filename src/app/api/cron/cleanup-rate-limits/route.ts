@@ -39,8 +39,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   let totalDeleted = 0;
 
   // Borrado por lotes para no exceder límites de batch de Firestore.
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  for (;;) {
     const snap = await db
       .collection(RATE_LIMITS_COLLECTION)
       .where("expiresAt", "<", nowIso)

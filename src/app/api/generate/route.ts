@@ -26,9 +26,32 @@ import {
 import { BASE_GENERATION_CREDITS, computeGenerationCreditsCost, type UserFacingResolution } from "@/lib/firestore/credit-pricing";
 import { getClientIp, readBearerToken } from "@/lib/server/request";
 import { getFirebaseStorageConfig, uploadGalleryImage } from "@/lib/storage/firebase-storage";
+import { enhancePrompt } from "@/lib/services/prompt-enhancer";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
+
+interface EnhancerFields {
+  videoTitle: string | null;
+  userPrompt: string;
+  referenceInstructions: string | null;
+  stylePrompt: string;
+}
+
+// Extrae los campos del enhancer (doc §3.3) del body. Devuelve null si no viene
+// `userPrompt`, en cuyo caso se mantiene el comportamiento previo (params.prompt).
+function extractEnhancerFields(raw: Record<string, unknown>): EnhancerFields | null {
+  const userPrompt = typeof raw.userPrompt === "string" ? raw.userPrompt.trim() : "";
+  if (!userPrompt) return null;
+  const str = (v: unknown): string | null =>
+    typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
+  return {
+    videoTitle: str(raw.videoTitle),
+    userPrompt,
+    referenceInstructions: str(raw.referenceInstructions),
+    stylePrompt: typeof raw.stylePrompt === "string" ? raw.stylePrompt : "",
+  };
+}
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const startedAt = new Date().toISOString();
@@ -68,6 +91,32 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 500 },
     );
   }
+
+  // ---------------- LLM enhancer (doc §3.3) ----------------
+  // Compatible hacia atrás: solo se ejecuta si la petición trae los campos
+  // nuevos del formulario (userPrompt). Si no, se usa params.prompt tal cual.
+  const enhancerFields = extractEnhancerFields(rawBody);
+  let enhancedPrompt = params.prompt;
+  let userPromptForRecord = params.prompt;
+  if (enhancerFields) {
+    userPromptForRecord = enhancerFields.userPrompt;
+    const firstRef = referenceImages[0];
+    const enhanced = await enhancePrompt(
+      {
+        videoTitle: enhancerFields.videoTitle,
+        userPrompt: enhancerFields.userPrompt,
+        referenceImageBase64: firstRef?.data ?? null,
+        referenceImageMimeType: firstRef?.mimeType ?? null,
+        referenceInstructions: enhancerFields.referenceInstructions,
+        stylePrompt: enhancerFields.stylePrompt,
+      },
+      { apiKey: geminiKey },
+    );
+    enhancedPrompt = enhanced.enhancedPrompt;
+    // El prompt que recibe la IA de imagen es el enhanced.
+    params.prompt = enhancedPrompt;
+  }
+  void userPromptForRecord; // se persistirá en el doc `generations` (Sección 10)
 
   let authenticatedUser: Awaited<ReturnType<typeof verifyIdToken>> | null = null;
   let chargedCredits = 0;
