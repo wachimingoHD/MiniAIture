@@ -178,7 +178,7 @@ export default function PricingPage() {
             type="button"
             disabled={busy || !authEmail || alreadyPro}
             onClick={() => void startCheckout()}
-            className="mt-5 w-full rounded-md bg-[var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-black hover:bg-[var(--color-accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-5 w-full rounded-md bg-[var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--color-accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {alreadyPro ? "Already acquired" : busy ? "Opening checkout..." : "Subscribe to Pro"}
           </button>

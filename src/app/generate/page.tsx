@@ -614,7 +614,7 @@ export default function HomePage() {
             </div>
           </details>
 
-          <button type="button" disabled={generating || !derivedParams.prompt.trim() || insufficientCredits} onClick={generate} className="w-full rounded-md bg-[var(--color-accent)] px-4 py-3 text-sm font-semibold text-black disabled:opacity-50">
+          <button type="button" disabled={generating || !derivedParams.prompt.trim() || insufficientCredits} onClick={generate} className="w-full rounded-md bg-[var(--color-accent)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
             {generating
               ? "Generando..."
               : insufficientCredits
@@ -805,7 +805,7 @@ function PublishControls({
           </p>
           <div className="flex gap-2">
             <button type="button" disabled={busy} onClick={() => setConfirming(false)} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 disabled:opacity-50">Cancelar</button>
-            <button type="button" disabled={busy} onClick={() => void publish()} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 font-semibold text-black disabled:opacity-50">{busy ? "Publicando…" : "Publicar"}</button>
+            <button type="button" disabled={busy} onClick={() => void publish()} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 font-semibold text-white disabled:opacity-50">{busy ? "Publicando…" : "Publicar"}</button>
           </div>
         </div>
       )}

@@ -98,7 +98,7 @@ export default function SettingsPage() {
             type="button"
             disabled={busy || displayName.trim().length < 3}
             onClick={() => void save()}
-            className="rounded-md bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
+            className="rounded-md bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
             {busy ? "Guardando…" : "Guardar"}
           </button>
