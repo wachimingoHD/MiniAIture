@@ -316,9 +316,11 @@ export default function HomePage() {
         </div>
         <nav className="hidden items-center gap-4 text-sm text-[var(--color-text-secondary)] md:flex">
           <Link href="/pricing" className="hover:text-[var(--color-accent)]">Pricing</Link>
-          <Link href="/gallery" className="hover:text-[var(--color-accent)]">Gallery</Link>
+          <Link href="/gallery" className="hover:text-[var(--color-accent)]">Comunidad</Link>
           {authEmail ? (
             <>
+              <Link href="/dashboard/gallery" className="hover:text-[var(--color-accent)]">Mi galería</Link>
+              <Link href="/dashboard/settings" className="hover:text-[var(--color-accent)]">Ajustes</Link>
               <div className="text-right text-xs">
                 <p className="text-[var(--color-text-primary)]">{authEmail}</p>
                 <p className="text-[var(--color-text-muted)]">
