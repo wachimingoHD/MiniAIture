@@ -21,14 +21,55 @@ import {
   getOrCreateUserDocument,
   recordGenerationSuccess,
   refundGenerationCredits,
-  storeProGalleryImages,
 } from "@/lib/firestore/users";
-import { BASE_GENERATION_CREDITS, computeGenerationCreditsCost, type UserFacingResolution } from "@/lib/firestore/credit-pricing";
+import {
+  BASE_GENERATION_CREDITS,
+  computeGenerationCreditsCost,
+  resolveGenerationMode,
+  type UserFacingResolution,
+} from "@/lib/firestore/credit-pricing";
 import { getClientIp, readBearerToken } from "@/lib/server/request";
 import { getFirebaseStorageConfig, uploadGalleryImage } from "@/lib/storage/firebase-storage";
+import { enhancePrompt } from "@/lib/services/prompt-enhancer";
+import { createGeneration } from "@/lib/firestore/generations";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
+
+interface EnhancerFields {
+  videoTitle: string | null;
+  userPrompt: string;
+  referenceInstructions: string | null;
+  stylePrompt: string;
+}
+
+function optStr(v: unknown): string | null {
+  return typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
+}
+
+// Extrae los campos del enhancer (doc §3.3) del body. Devuelve null si no viene
+// `userPrompt`, en cuyo caso se mantiene el comportamiento previo (params.prompt).
+function extractEnhancerFields(raw: Record<string, unknown>): EnhancerFields | null {
+  const userPrompt = typeof raw.userPrompt === "string" ? raw.userPrompt.trim() : "";
+  if (!userPrompt) return null;
+  return {
+    videoTitle: optStr(raw.videoTitle),
+    userPrompt,
+    referenceInstructions: optStr(raw.referenceInstructions),
+    stylePrompt: typeof raw.stylePrompt === "string" ? raw.stylePrompt : "",
+  };
+}
+
+// Metadatos de estilo para el documento `generations` (doc §1.2 / §4.1 campo 4).
+function extractStyleMeta(raw: Record<string, unknown>): {
+  styleType: "preset" | "custom" | "gallery";
+  styleId: string | null;
+  nicho: string | null;
+} {
+  const t = raw.styleType;
+  const styleType = t === "preset" || t === "gallery" ? t : "custom";
+  return { styleType, styleId: optStr(raw.styleId), nicho: optStr(raw.nicho) };
+}
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const startedAt = new Date().toISOString();
@@ -69,6 +110,37 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // ---------------- LLM enhancer (doc §3.3) ----------------
+  // Compatible hacia atrás: solo se ejecuta si la petición trae los campos
+  // nuevos del formulario (userPrompt). Si no, se usa params.prompt tal cual.
+  const enhancerFields = extractEnhancerFields(rawBody);
+  let enhancedPrompt = params.prompt;
+  let userPromptForRecord = params.prompt;
+  if (enhancerFields) {
+    userPromptForRecord = enhancerFields.userPrompt;
+    const firstRef = referenceImages[0];
+    const enhanced = await enhancePrompt(
+      {
+        videoTitle: enhancerFields.videoTitle,
+        userPrompt: enhancerFields.userPrompt,
+        referenceImageBase64: firstRef?.data ?? null,
+        referenceImageMimeType: firstRef?.mimeType ?? null,
+        referenceInstructions: enhancerFields.referenceInstructions,
+        stylePrompt: enhancerFields.stylePrompt,
+      },
+      { apiKey: geminiKey },
+    );
+    enhancedPrompt = enhanced.enhancedPrompt;
+    // El prompt que recibe la IA de imagen es el enhanced.
+    params.prompt = enhancedPrompt;
+  }
+
+  // Metadatos para el documento `generations` (doc §1.2 / §10).
+  const styleMeta = extractStyleMeta(rawBody);
+  const stylePromptForRecord = enhancerFields?.stylePrompt ?? "";
+  const videoTitleForRecord = enhancerFields?.videoTitle ?? null;
+  const referenceInstructionsForRecord = enhancerFields?.referenceInstructions ?? null;
+
   let authenticatedUser: Awaited<ReturnType<typeof verifyIdToken>> | null = null;
   let chargedCredits = 0;
   let chargedFrom: { daily: number; monthly: number } = { daily: 0, monthly: 0 };
@@ -107,6 +179,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const userDoc = await getOrCreateUserDocument(db, {
       uid: authenticatedUser.uid,
       email: authenticatedUser.email,
+      displayName: authenticatedUser.name,
     });
     userPlan = userDoc.plan;
 
@@ -343,7 +416,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const finalImages = upscaleResult.finalImages;
     const finalCost = upscaleResult.mergedCost;
 
-    // ---------------- 5) Optional Pro gallery persistence ----------------
+    // ---------------- 5) Persistencia en `generations` (doc §1.2 / §10) ----------------
+    const generationIds: string[] = [];
     if (authenticatedUser) {
       const db = adminFirestore();
       if (db) {
@@ -357,8 +431,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         });
 
         const storageCfg = getFirebaseStorageConfig();
-
-        if (userPlan === "pro" && storageCfg) {
+        // Persistimos generations para TODOS los usuarios (la galería personal
+        // FREE muestra los últimos 30, doc §5.2 opción A).
+        if (storageCfg) {
           try {
             const uploaded = await Promise.all(
               finalImages.map((img) =>
@@ -369,14 +444,31 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
                 }),
               ),
             );
-            await storeProGalleryImages(db, {
-              uid: authenticatedUser.uid,
-              prompt: params.prompt,
-              imageUrls: uploaded.map((item) => item.publicUrl),
-              provider: providerUsed,
-            });
+            const genProvider = providerForStats === "fal" ? "fal" : "gemini";
+            const genResolution = userFacingResolution === "512" ? 512 : 1024;
+            const genMode = resolveGenerationMode(userPlan ?? "free", requestedLowPriority);
+            for (const item of uploaded) {
+              const { id } = await createGeneration(db, {
+                userId: authenticatedUser.uid,
+                videoTitle: videoTitleForRecord,
+                userPrompt: userPromptForRecord,
+                enhancedPrompt,
+                referenceImageUrl: null,
+                referenceInstructions: referenceInstructionsForRecord,
+                styleType: styleMeta.styleType,
+                styleId: styleMeta.styleId,
+                stylePrompt: stylePromptForRecord,
+                imageUrl: item.publicUrl,
+                provider: genProvider,
+                resolution: genResolution,
+                mode: genMode,
+                creditsUsed: chargedCredits,
+                nicho: styleMeta.nicho,
+              });
+              generationIds.push(id);
+            }
           } catch (err) {
-            console.warn("Firebase Storage gallery persistence failed:", err);
+            console.warn("Persistencia de generations falló:", err);
           }
         }
       }
@@ -414,7 +506,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       watermarkApplied: false,
     };
 
-    (response as GenerateResponse & { durationMs: number }).durationMs = Date.now() - startMs;
+    (response as GenerateResponse & { durationMs: number; generationIds: string[] }).durationMs =
+      Date.now() - startMs;
+    (response as GenerateResponse & { generationIds: string[] }).generationIds = generationIds;
 
     return NextResponse.json(response);
   } catch (err) {

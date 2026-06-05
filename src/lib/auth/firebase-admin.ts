@@ -6,6 +6,7 @@ import { getAppCheck } from "firebase-admin/app-check";
 export interface VerifiedUser {
   uid: string;
   email?: string;
+  name?: string; // nombre de Google (doc §7.1)
   emailVerified: boolean;
 }
 
@@ -62,6 +63,7 @@ export async function verifyIdToken(idToken: string): Promise<VerifiedUser | nul
     return {
       uid: decoded.uid,
       email: decoded.email,
+      name: typeof decoded.name === "string" ? decoded.name : undefined,
       emailVerified: Boolean(decoded.email_verified),
     };
   } catch {

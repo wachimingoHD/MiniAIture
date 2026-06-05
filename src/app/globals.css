@@ -5,29 +5,56 @@
 }
 
 @theme {
-  --color-bg-base: #0a0a0c;
-  --color-bg-panel: #111114;
-  --color-bg-panel-2: #16161b;
-  --color-border: #2a2a32;
-  --color-border-strong: #3a3a44;
-  --color-text-primary: #f4f4f5;
-  --color-text-secondary: #a1a1aa;
-  --color-text-muted: #71717a;
-  --color-accent: #f5d142;
-  --color-accent-strong: #ffd83d;
-  --color-accent-soft: #2c2515;
-  --color-danger: #ef4444;
-  --color-success: #22c55e;
-  --color-info: #3b82f6;
+  /* Fondo - oscuro pero cálido (doc: dirección estética) */
+  --color-bg-base: #1a1b2e;
+  --color-bg-panel: #232442;
+  --color-bg-panel-2: #2a2b4a;
+
+  --color-border: #34366a;
+  --color-border-strong: #45487f;
+
+  --color-text-primary: #f0f0f5;
+  --color-text-secondary: #a7a7c8;
+  --color-text-muted: #7a7a9c;
+
+  /* Acentos vivos sin ser agresivos */
+  --color-accent: #7c6ef0;        /* violeta - acción principal */
+  --color-accent-strong: #9286f5;
+  --color-accent-soft: #2c2a55;
+  --color-accent-2: #f0a05e;      /* naranja cálido - CTA secundario */
+
+  --color-danger: #f06e6e;
+  --color-success: #5ecf8b;
+  --color-warning: #f0d05e;
+  --color-info: #6ea0f0;
+
+  /* Mascotas - pastel */
+  --color-mascot-pink: #f0a0c0;
+  --color-mascot-blue: #a0c0f0;
+  --color-mascot-green: #a0f0c0;
+  --color-mascot-yellow: #f0e0a0;
+  --color-mascot-lavender: #c0a0f0;
+
+  /* Tipografía (next/font expone las familias vía variables *-next) */
+  --font-display: var(--font-display-next), "Baloo 2", ui-rounded, system-ui, sans-serif;
+  --font-body: var(--font-body-next), "DM Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
 html, body {
-  background: var(--color-bg-base);
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(124, 110, 240, 0.12), transparent 60%),
+    radial-gradient(900px 500px at 0% 0%, rgba(240, 160, 94, 0.07), transparent 55%),
+    var(--color-bg-base);
+  background-attachment: fixed;
   color: var(--color-text-primary);
   min-height: 100vh;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
 }
 
 * {
@@ -38,44 +65,82 @@ button {
   cursor: pointer;
 }
 
-input[type="range"] {
-  accent-color: var(--color-accent);
-}
-
+input[type="range"],
 input[type="checkbox"] {
   accent-color: var(--color-accent);
 }
 
-/* Scrollbar (webkit) */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #2a2a32;
-  border-radius: 8px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #3a3a44;
+/* Foco visible coherente con la estética (doc: accesibilidad) */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
-@keyframes pulse-soft {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-.animate-pulse-soft {
-  animation: pulse-soft 1.6s ease-in-out infinite;
-}
+/* Scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #34366a; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #45487f; }
 
-@keyframes shimmer {
-  0% { background-position: -400px 0; }
-  100% { background-position: 400px 0; }
-}
+/* Logo: el "AI" destacado */
+.logo-ai { color: var(--color-accent); }
+
+/* ----------------------------------------------------------------------- */
+/* Animaciones (transform / opacity solamente - sin reflow)                */
+/* ----------------------------------------------------------------------- */
+
+@keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.animate-pulse-soft { animation: pulse-soft 1.6s ease-in-out infinite; }
+
+@keyframes shimmer-x { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
 .shimmer {
-  background: linear-gradient(90deg, #16161b 0%, #1f1f26 50%, #16161b 100%);
-  background-size: 800px 100%;
-  animation: shimmer 1.6s linear infinite;
+  position: relative;
+  overflow: hidden;
+  background: var(--color-bg-panel-2);
+}
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+  transform: translateX(-100%);
+  animation: shimmer-x 1.6s linear infinite;
+}
+
+/* Entrada staggered para hero / secciones */
+@keyframes rise-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+.rise-in { animation: rise-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Reveal al hacer scroll (activado por IntersectionObserver con .is-visible) */
+.reveal { opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
+.reveal.is-visible { opacity: 1; transform: translateY(0); }
+
+/* Mascotas: bob (flotar), waddle (andar), brush (pintar) */
+@keyframes mascot-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+.mascot-bob { animation: mascot-bob 2.4s ease-in-out infinite; }
+
+@keyframes mascot-waddle { 0%, 100% { transform: rotate(-5deg); } 50% { transform: rotate(5deg); } }
+.mascot-waddle { animation: mascot-waddle 0.7s ease-in-out infinite; }
+
+@keyframes mascot-brush { 0%, 100% { transform: rotate(-14deg) translateY(0); } 50% { transform: rotate(14deg) translateY(-2px); } }
+.mascot-brush { transform-origin: bottom center; animation: mascot-brush 0.6s ease-in-out infinite; }
+
+@keyframes paint-fill { 0% { transform: scaleY(0); } 100% { transform: scaleY(1); } }
+.paint-fill { transform-origin: bottom; animation: paint-fill 2.8s ease-in-out infinite alternate; }
+
+/* Carrusel de comunidad: scroll horizontal infinito */
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.marquee-track { animation: marquee 40s linear infinite; }
+.marquee-paused:hover .marquee-track { animation-play-state: paused; }
+
+/* Respeta prefers-reduced-motion (doc: accesibilidad / rendimiento) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .reveal { opacity: 1; transform: none; }
+  .marquee-track { animation: none; }
 }

@@ -1,9 +1,21 @@
+// Galería personal del usuario (doc §5.1)
+// =============================================================================
+// GET /api/gallery?cursor=<createdAtIso>
+//   - FREE: limitado a los últimos 30 (doc §5.2 opción A: el resto se conserva
+//     en Firestore pero no se muestra).
+//   - PRO: paginación por cursor (createdAt).
+// =============================================================================
+
 import { NextRequest, NextResponse } from "next/server";
 import { adminFirestore, verifyIdToken } from "@/lib/auth/firebase-admin";
 import { getOrCreateUserDocument } from "@/lib/firestore/users";
+import { getUserGenerations } from "@/lib/firestore/generations";
 import { readBearerToken } from "@/lib/server/request";
 
 export const runtime = "nodejs";
+
+const FREE_GALLERY_LIMIT = 30;
+const PRO_PAGE_SIZE = 30;
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const token = readBearerToken(req);
@@ -20,38 +32,37 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const doc = await getOrCreateUserDocument(db, { uid: user.uid, email: user.email });
-  if (doc.plan !== "pro") {
+  const doc = await getOrCreateUserDocument(db, { uid: user.uid, email: user.email, displayName: user.name });
+
+  const cursor = req.nextUrl.searchParams.get("cursor") ?? undefined;
+  const isPro = doc.plan === "pro";
+  // FREE: tope duro de 30 sin paginación. PRO: páginas de 30 con cursor.
+  const limit = isPro ? PRO_PAGE_SIZE : FREE_GALLERY_LIMIT;
+
+  let items;
+  try {
+    items = await getUserGenerations(db, user.uid, {
+      limit,
+      startAfterCreatedAt: isPro ? cursor : undefined,
+    });
+  } catch (err) {
+    // Falta el índice compuesto (userId + createdAt): degradar a vacío en vez de 500.
+    const needsIndex = String((err as Error).message).includes("FAILED_PRECONDITION");
+    console.warn("getUserGenerations falló:", (err as Error).message);
     return NextResponse.json(
-      {
-        error: "Gallery is available only for Pro users.",
-        plan: doc.plan,
-        images: [],
-      },
-      { status: 403 },
+      { plan: doc.plan, count: 0, limited: !isPro, nextCursor: null, images: [], error: needsIndex ? "index_required" : "query_failed" },
+      { status: 200 },
     );
   }
 
-  const images = [...(doc.gallery ?? [])]
-    .map((image) => {
-      const legacy = image as unknown as { createdAt?: unknown; createdAtIso?: unknown };
-      const createdAt =
-        typeof legacy.createdAt === "string"
-          ? legacy.createdAt
-          : typeof legacy.createdAtIso === "string"
-            ? legacy.createdAtIso
-            : typeof legacy.createdAt === "number"
-              ? new Date(legacy.createdAt).toISOString()
-              : new Date().toISOString();
-      return {
-        ...image,
-        createdAt,
-      };
-    })
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const nextCursor =
+    isPro && items.length === PRO_PAGE_SIZE ? items[items.length - 1].createdAt : null;
+
   return NextResponse.json({
     plan: doc.plan,
-    count: images.length,
-    images,
+    count: items.length,
+    limited: !isPro,
+    nextCursor,
+    images: items,
   });
 }
