@@ -1,32 +1,40 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 @theme {
-  /* Fondo - oscuro pero cálido (doc: dirección estética) */
-  --color-bg-base: #1a1b2e;
-  --color-bg-panel: #232442;
-  --color-bg-panel-2: #2a2b4a;
+  /* Fondo - claro beige pastel, cálido y que no deslumbra (dirección estética) */
+  --color-bg-base: #f1ecdc;       /* beige cálido de fondo */
+  --color-bg-panel: #fbf8f1;      /* superficie de tarjeta */
+  --color-bg-panel-2: #efe9dc;    /* superficie secundaria / hover */
 
-  --color-border: #34366a;
-  --color-border-strong: #45487f;
+  --color-border: #e6dfcf;
+  --color-border-strong: #d6cbb4;
 
-  --color-text-primary: #f0f0f5;
-  --color-text-secondary: #a7a7c8;
-  --color-text-muted: #7a7a9c;
+  --color-text-primary: #2c2a3a;  /* slate cálido casi negro */
+  --color-text-secondary: #66637a;
+  --color-text-muted: #97939f;
 
   /* Acentos vivos sin ser agresivos */
   --color-accent: #7c6ef0;        /* violeta - acción principal */
-  --color-accent-strong: #9286f5;
-  --color-accent-soft: #2c2a55;
-  --color-accent-2: #f0a05e;      /* naranja cálido - CTA secundario */
+  --color-accent-strong: #6a5ce0;
+  --color-accent-soft: #ece9fb;   /* tinte violeta muy claro para fondos suaves */
+  --color-accent-2: #ef9f5c;      /* naranja cálido - CTA secundario */
 
-  --color-danger: #f06e6e;
-  --color-success: #5ecf8b;
-  --color-warning: #f0d05e;
-  --color-info: #6ea0f0;
+  --color-danger: #df5d5d;
+  --color-success: #2fa15f;
+  --color-warning: #cf9b2e;
+  --color-info: #4f86e0;
+
+  /* Pasteles decorativos (cuadros flotantes / mascotas) */
+  --color-pastel-purple: #c9b8f0;
+  --color-pastel-teal: #9ec6c9;
+  --color-pastel-yellow: #f1d98a;
+  --color-pastel-green: #bfe0ad;
+  --color-pastel-blue: #8aa8e0;
+  --color-pastel-pink: #efa8a8;
 
   /* Mascotas - pastel */
   --color-mascot-pink: #f0a0c0;
@@ -42,8 +50,8 @@
 
 html, body {
   background:
-    radial-gradient(1200px 600px at 80% -10%, rgba(124, 110, 240, 0.12), transparent 60%),
-    radial-gradient(900px 500px at 0% 0%, rgba(240, 160, 94, 0.07), transparent 55%),
+    radial-gradient(1200px 600px at 85% -10%, rgba(124, 110, 240, 0.10), transparent 60%),
+    radial-gradient(900px 520px at 0% 0%, rgba(239, 159, 92, 0.10), transparent 55%),
     var(--color-bg-base);
   background-attachment: fixed;
   color: var(--color-text-primary);
@@ -80,8 +88,8 @@ input[type="checkbox"] {
 /* Scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #34366a; border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: #45487f; }
+::-webkit-scrollbar-thumb { background: #d6cbb4; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #c3b596; }
 
 /* Logo: el "AI" destacado */
 .logo-ai { color: var(--color-accent); }
@@ -134,6 +142,125 @@ input[type="checkbox"] {
 .marquee-track { animation: marquee 40s linear infinite; }
 .marquee-paused:hover .marquee-track { animation-play-state: paused; }
 
+/* Slider de pingüinos que cargan miniaturas públicas (landing).
+   Dos filas: una avanza hacia la izquierda y otra hacia la derecha (reverse). */
+.pmarquee { animation: marquee 48s linear infinite; will-change: transform; }
+.pmarquee.reverse { animation-direction: reverse; }
+
+/* Pausa al señalar una miniatura concreta. La clase .is-paused / .is-stopped la
+   pone el componente con JS (estado de hover), así funciona en TODOS los
+   navegadores (sin depender de :has()). */
+.pmarquee.is-paused { animation-play-state: paused; }
+/* Todos los pingüinos parados se quedan en el frame 0 del sprite de deslizar. */
+.pmarquee.is-paused .peng {
+  animation: none;
+  background-position: 0 0;
+}
+/* ...excepto el de la miniatura señalada, que muestra el pingüino de pie, subido
+   para que su culo quede a la altura de la panza del que se desliza (−16px). */
+.thumb-card.is-stopped .peng {
+  background-image: url("/sprites/penguin-stop.png");
+  background-size: var(--fw) var(--fw);
+  background-position: 0 0;
+  transform: translateY(-16px);
+}
+
+/* Cuadros pastel decorativos flotando (landing). */
+@keyframes float-soft {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-16px) rotate(3deg); }
+}
+.float-soft { animation: float-soft 7s ease-in-out infinite; }
+
+/* -------- Pingüinos deslizándose (sprite sheet en CSS puro, sin JS) --------- */
+/* /sprites/penguin-slide.png = 6 frames de 50×50 (sheet 300×50). Mira a la
+   derecha; .peng--flip lo voltea para el sentido contrario. */
+/* TAMAÑO de los pingüinos del slider: cambia --fw (ancho de un frame). El resto
+   (tamaño del sprite y posiciones de los fotogramas) se recalcula solo. */
+.peng {
+  --fw: 72px;
+  width: var(--fw);
+  height: var(--fw);
+  background-image: url("/sprites/penguin-slide.png");
+  background-repeat: no-repeat;
+  background-size: calc(var(--fw) * 6) var(--fw); /* 6 frames */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.peng--flip { transform: scaleX(-1); }
+
+/* Las 3 listas de fotogramas y su animación se generan desde los arrays
+   FRAME_SEQUENCES de src/components/ui/PenguinThumbnailMarquee.tsx
+   (edita ahí las secuencias). */
+
+/* -------- Pingüino PINTOR del loader "Creando tu miniatura" ---------------- */
+/* /sprites/penguin.png = 11 frames de 50×50 (sheet 550×50). Sprite CSS puro.
+   Para cambiar la secuencia/velocidad edita @keyframes peng-paint y la duración
+   de .peng-paint (índices válidos: 0–10). */
+.peng-paint {
+  --fw: 96px;
+  width: var(--fw);
+  height: var(--fw);
+  background-image: url("/sprites/penguin.png");
+  background-repeat: no-repeat;
+  background-size: calc(var(--fw) * 11) var(--fw); /* 11 frames */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  animation: peng-paint 3.7s step-end infinite;
+}
+@keyframes peng-paint {
+  0.0% { background-position-x: calc(var(--fw) * 0); }
+  2.703% { background-position-x: calc(var(--fw) * -1); }
+  5.405% { background-position-x: calc(var(--fw) * 0); }
+  8.108% { background-position-x: calc(var(--fw) * -1); }
+  10.811% { background-position-x: calc(var(--fw) * -2); }
+  13.514% { background-position-x: calc(var(--fw) * -3); }
+  16.216% { background-position-x: calc(var(--fw) * -2); }
+  18.919% { background-position-x: calc(var(--fw) * -3); }
+  21.622% { background-position-x: calc(var(--fw) * 0); }
+  24.324% { background-position-x: calc(var(--fw) * -1); }
+  27.027% { background-position-x: calc(var(--fw) * 0); }
+  29.73% { background-position-x: calc(var(--fw) * -1); }
+  32.432% { background-position-x: calc(var(--fw) * 0); }
+  35.135% { background-position-x: calc(var(--fw) * -1); }
+  37.838% { background-position-x: calc(var(--fw) * -5); }
+  40.541% { background-position-x: calc(var(--fw) * -6); }
+  43.243% { background-position-x: calc(var(--fw) * -5); }
+  45.946% { background-position-x: calc(var(--fw) * -6); }
+  48.649% { background-position-x: calc(var(--fw) * 0); }
+  51.351% { background-position-x: calc(var(--fw) * -1); }
+  54.054% { background-position-x: calc(var(--fw) * 0); }
+  56.757% { background-position-x: calc(var(--fw) * -1); }
+  59.459% { background-position-x: calc(var(--fw) * -5); }
+  62.162% { background-position-x: calc(var(--fw) * -6); }
+  64.865% { background-position-x: calc(var(--fw) * -5); }
+  67.568% { background-position-x: calc(var(--fw) * -6); }
+  70.27% { background-position-x: calc(var(--fw) * 0); }
+  72.973% { background-position-x: calc(var(--fw) * -1); }
+  75.676% { background-position-x: calc(var(--fw) * 0); }
+  78.378% { background-position-x: calc(var(--fw) * -1); }
+  81.081% { background-position-x: calc(var(--fw) * -10); }
+  83.784% { background-position-x: calc(var(--fw) * -10); }
+  86.486% { background-position-x: calc(var(--fw) * -10); }
+  89.189% { background-position-x: calc(var(--fw) * -10); }
+  91.892% { background-position-x: calc(var(--fw) * -10); }
+  94.595% { background-position-x: calc(var(--fw) * -10); }
+  97.297% { background-position-x: calc(var(--fw) * -10); }
+  100% { background-position-x: calc(var(--fw) * -10); }
+}
+
+/* -------- Reveal al hacer scroll, 100% CSS (animation-timeline) ------------- */
+/* Sin JS: aparece a medida que entra en el viewport. Fallback: visible. */
+.on-scroll-rise { opacity: 1; }
+@supports (animation-timeline: view()) {
+  .on-scroll-rise {
+    opacity: 0;
+    animation: rise-in 1ms linear both;
+    animation-timeline: view();
+    animation-range: entry 4% cover 22%;
+  }
+}
+
 /* Respeta prefers-reduced-motion (doc: accesibilidad / rendimiento) */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -143,4 +270,8 @@ input[type="checkbox"] {
   }
   .reveal { opacity: 1; transform: none; }
   .marquee-track { animation: none; }
+  .pmarquee { animation: none; }
+  .float-soft { animation: none; }
+  .peng-v0, .peng-v1, .peng-v2, .peng-paint { animation: none; }
+  .on-scroll-rise { opacity: 1 !important; animation: none !important; }
 }

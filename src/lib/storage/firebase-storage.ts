@@ -58,6 +58,30 @@ export async function uploadGalleryImage(input: UploadImageInput): Promise<Uploa
   };
 }
 
+// Extrae la key del objeto a partir de la URL pública de Firebase Storage
+// (https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<encodedKey>?...).
+export function storageKeyFromUrl(url: string): string | null {
+  const m = url.match(/\/o\/([^?]+)/);
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return null;
+  }
+}
+
+// Borra un objeto de Storage por su key. Best-effort (ignora "no existe").
+export async function deleteGalleryImageByKey(key: string): Promise<void> {
+  const cfg = getFirebaseStorageConfig();
+  const app = getAdminApp();
+  if (!cfg || !app) return;
+  try {
+    await getStorage(app).bucket(cfg.bucketName).file(key).delete({ ignoreNotFound: true });
+  } catch {
+    /* best-effort */
+  }
+}
+
 function mimeToExt(mimeType: string): string {
   if (mimeType.includes("png")) return "png";
   if (mimeType.includes("jpeg") || mimeType.includes("jpg")) return "jpg";

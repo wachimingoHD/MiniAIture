@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
-import { getPublicGenerations } from "@/lib/firestore/generations";
+import { getPublicGenerations, toPublicDTO } from "@/lib/firestore/generations";
 
 export const runtime = "nodejs";
 
@@ -46,9 +46,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const nextCursor =
     sort === "recent" && items.length === PAGE_SIZE ? items[items.length - 1].createdAt : null;
 
+  // DTO público: nunca exponemos userId, enhancedPrompt, créditos, etc.
   return NextResponse.json({
     count: filtered.length,
     nextCursor,
-    images: filtered,
+    images: filtered.map((g) => toPublicDTO(g)),
   });
 }

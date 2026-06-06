@@ -447,13 +447,31 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             const genProvider = providerForStats === "fal" ? "fal" : "gemini";
             const genResolution = userFacingResolution === "512" ? 512 : 1024;
             const genMode = resolveGenerationMode(userPlan ?? "free", requestedLowPriority);
+
+            // Persistimos también la imagen de referencia (si la hubo) para
+            // poder mostrarla en el detalle de la generación.
+            let referenceImageUrl: string | null = null;
+            const firstRef = referenceImages[0];
+            if (firstRef?.data) {
+              try {
+                const refUp = await uploadGalleryImage({
+                  uid: authenticatedUser.uid,
+                  data: firstRef.data,
+                  mimeType: firstRef.mimeType,
+                });
+                referenceImageUrl = refUp.publicUrl;
+              } catch (err) {
+                console.warn("No se pudo persistir la imagen de referencia:", err);
+              }
+            }
+
             for (const item of uploaded) {
               const { id } = await createGeneration(db, {
                 userId: authenticatedUser.uid,
                 videoTitle: videoTitleForRecord,
                 userPrompt: userPromptForRecord,
                 enhancedPrompt,
-                referenceImageUrl: null,
+                referenceImageUrl,
                 referenceInstructions: referenceInstructionsForRecord,
                 styleType: styleMeta.styleType,
                 styleId: styleMeta.styleId,

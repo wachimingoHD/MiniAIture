@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Las imágenes se suben desde el servidor (Admin SDK) y se sirven mediante URLs
+// con token de descarga (acceso por capacidad, no por reglas). El SDK de cliente
+// no debe leer ni escribir directamente en el bucket: negamos todo acceso directo.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

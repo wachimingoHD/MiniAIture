@@ -5,10 +5,12 @@
 // =============================================================================
 
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
 import { getGenerationById, type GenerationWithId } from "@/lib/firestore/generations";
+import { generateAltText } from "@/lib/seo";
 import UseStyleButton from "./use-style-button";
 
 export const runtime = "nodejs";
@@ -49,14 +51,21 @@ export async function generateMetadata({
   if (!gen) return { title: "Miniatura no encontrada | MiniAItura Gallery" };
 
   const desc = shortText(gen.userPrompt, 150);
+  const title = `Miniatura de YouTube${gen.nicho ? ` de ${gen.nicho}` : ""}: ${shortText(gen.userPrompt, 55)}`;
   return {
-    title: `${shortText(gen.userPrompt, 60)} | MiniAItura Gallery`,
-    description: `AI-generated YouTube thumbnail: ${desc}`,
+    title,
+    description: `Miniatura de YouTube generada con IA: ${desc}`,
+    alternates: { canonical: `/gallery/${generationId}` },
     openGraph: {
-      title: shortText(gen.userPrompt, 60),
+      title,
       description: desc,
-      images: [{ url: gen.imageUrl }],
+      images: [{ url: gen.imageUrl, width: 1280, height: 720 }],
       type: "article",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      images: [gen.imageUrl],
     },
   };
 }
@@ -95,13 +104,16 @@ export default async function GenerationDetailPage({
 
       <article className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
         <figure className="m-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={gen.imageUrl}
-            alt={shortText(gen.userPrompt, 120)}
-            loading="lazy"
-            className="aspect-video w-full object-cover"
-          />
+          <div className="relative aspect-video w-full">
+            <Image
+              src={gen.imageUrl}
+              alt={generateAltText(gen)}
+              fill
+              sizes="(max-width: 1024px) 100vw, 640px"
+              priority
+              className="object-cover"
+            />
+          </div>
           <figcaption className="p-3 text-sm text-[var(--color-text-secondary)]">
             {isCustom && gen.stylePrompt ? gen.stylePrompt : shortText(gen.userPrompt, 160)}
           </figcaption>
