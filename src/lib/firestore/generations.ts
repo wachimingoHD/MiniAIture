@@ -86,6 +86,35 @@ export interface GenerationWithId extends Generation {
   id: string;
 }
 
+// DTO público: SOLO los campos seguros para exponer sin autenticación.
+// Nunca incluir userId, enhancedPrompt, creditsUsed, provider, mode, etc.
+// El stylePrompt solo se expone si el estilo es propio (custom) — doc §6.3.
+export interface PublicGenerationDTO {
+  id: string;
+  imageUrl: string;
+  userPrompt: string;
+  styleType: StyleType;
+  stylePrompt: string | null;
+  nicho: string | null;
+  timesStyleCopied: number;
+  createdAt: string;
+  authorName?: string;
+}
+
+export function toPublicDTO(gen: GenerationWithId, authorName?: string): PublicGenerationDTO {
+  return {
+    id: gen.id,
+    imageUrl: gen.imageUrl,
+    userPrompt: gen.userPrompt,
+    styleType: gen.styleType,
+    stylePrompt: gen.styleType === "custom" ? gen.stylePrompt : null,
+    nicho: gen.nicho,
+    timesStyleCopied: gen.timesStyleCopied,
+    createdAt: gen.createdAt,
+    ...(authorName ? { authorName } : {}),
+  };
+}
+
 function withId(doc: FirebaseFirestore.QueryDocumentSnapshot): GenerationWithId {
   return { id: doc.id, ...(doc.data() as Generation) };
 }
@@ -121,6 +150,26 @@ export async function getPublicGenerations(
   return snap.docs.map(withId);
 }
 
+// Para el sitemap: ids + fecha de TODAS las generaciones públicas (campo mínimo).
+// Usa el índice isPublic+createdAt. `max` acota por seguridad (el límite por
+// sitemap de Google es 50.000 URLs).
+export async function getAllPublicGenerationIds(
+  db: Firestore,
+  max = 5000,
+): Promise<{ id: string; createdAt: string }[]> {
+  const snap = await db
+    .collection(GENERATIONS_COLLECTION)
+    .where("isPublic", "==", true)
+    .orderBy("createdAt", "desc")
+    .limit(max)
+    .select("createdAt")
+    .get();
+  return snap.docs.map((d) => ({
+    id: d.id,
+    createdAt: (d.data() as { createdAt?: string }).createdAt ?? new Date().toISOString(),
+  }));
+}
+
 export async function getGenerationById(
   db: Firestore,
   id: string,
@@ -147,6 +196,39 @@ export async function publishGeneration(
       { merge: true },
     );
     return { ok: true };
+  });
+}
+
+// Despublicar: vuelve la generación privada. Solo el propietario (cualquier plan).
+export async function unpublishGeneration(
+  db: Firestore,
+  args: { id: string; uid: string },
+): Promise<{ ok: boolean; reason?: "NOT_FOUND" | "FORBIDDEN" }> {
+  const ref = db.collection(GENERATIONS_COLLECTION).doc(args.id);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return { ok: false, reason: "NOT_FOUND" as const };
+    const gen = snap.data() as Generation;
+    if (gen.userId !== args.uid) return { ok: false, reason: "FORBIDDEN" as const };
+    tx.set(ref, { isPublic: false, publishedAt: null } as Partial<Generation>, { merge: true });
+    return { ok: true };
+  });
+}
+
+// Borrar una generación. Solo el propietario. Devuelve la imageUrl para que el
+// llamante limpie también el objeto en Storage.
+export async function deleteGeneration(
+  db: Firestore,
+  args: { id: string; uid: string },
+): Promise<{ ok: boolean; reason?: "NOT_FOUND" | "FORBIDDEN"; imageUrl?: string }> {
+  const ref = db.collection(GENERATIONS_COLLECTION).doc(args.id);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return { ok: false, reason: "NOT_FOUND" as const };
+    const gen = snap.data() as Generation;
+    if (gen.userId !== args.uid) return { ok: false, reason: "FORBIDDEN" as const };
+    tx.delete(ref);
+    return { ok: true, imageUrl: gen.imageUrl };
   });
 }
 

@@ -43,6 +43,8 @@ export default function PersonalGalleryPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<GenerationItem | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = subscribeToAuthState(async (user) => {
@@ -81,6 +83,80 @@ export default function PersonalGalleryPage() {
       setError((err as Error).message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function patchItem(id: string, patch: Partial<GenerationItem>) {
+    setImages((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+    setSelected((cur) => (cur && cur.id === id ? { ...cur, ...patch } : cur));
+  }
+
+  async function togglePublish(item: GenerationItem): Promise<void> {
+    if (!token) return;
+    setActionBusy(true);
+    setActionMsg(null);
+    try {
+      const path = item.isPublic ? "unpublish" : "publish";
+      const res = await fetch(`/api/generations/${item.id}/${path}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setActionMsg(data.error ?? "No se pudo cambiar la visibilidad.");
+        return;
+      }
+      patchItem(item.id, { isPublic: !item.isPublic });
+      setActionMsg(item.isPublic ? "Miniatura hecha privada." : "Publicada en la galería pública.");
+    } catch (err) {
+      setActionMsg((err as Error).message);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function downloadImage(item: GenerationItem): Promise<void> {
+    setActionBusy(true);
+    setActionMsg(null);
+    try {
+      const res = await fetch(item.imageUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `miniaitura-${item.id}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setActionMsg((err as Error).message);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function removeItem(item: GenerationItem): Promise<void> {
+    if (!token) return;
+    if (!window.confirm("¿Borrar esta miniatura? No se puede deshacer.")) return;
+    setActionBusy(true);
+    setActionMsg(null);
+    try {
+      const res = await fetch(`/api/generations/${item.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setActionMsg(data.error ?? "No se pudo borrar.");
+        return;
+      }
+      setImages((prev) => prev.filter((it) => it.id !== item.id));
+      setSelected(null);
+    } catch (err) {
+      setActionMsg((err as Error).message);
+    } finally {
+      setActionBusy(false);
     }
   }
 
@@ -173,7 +249,10 @@ export default function PersonalGalleryPage() {
               <article
                 key={image.id}
                 className="cursor-pointer overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)]"
-                onClick={() => setSelected(image)}
+                onClick={() => {
+                  setSelected(image);
+                  setActionMsg(null);
+                }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={image.imageUrl} alt={image.userPrompt.slice(0, 80)} className="aspect-video w-full object-cover" />
@@ -235,6 +314,50 @@ export default function PersonalGalleryPage() {
                     <p className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2 text-[var(--color-text-secondary)]">{selected.stylePrompt}</p>
                   </div>
                 )}
+                <p className="text-[var(--color-text-muted)]">
+                  <strong className="text-[var(--color-text-primary)]">Visibilidad:</strong>{" "}
+                  {selected.isPublic ? (
+                    <>
+                      pública ·{" "}
+                      <Link href={`/gallery/${selected.id}`} className="text-[var(--color-accent)] hover:underline">
+                        ver en la galería
+                      </Link>
+                    </>
+                  ) : (
+                    "privada"
+                  )}
+                </p>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={actionBusy}
+                    onClick={() => void downloadImage(selected)}
+                    className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 font-semibold text-white hover:bg-[var(--color-accent-strong)] disabled:opacity-50"
+                  >
+                    Descargar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionBusy}
+                    onClick={() => void togglePublish(selected)}
+                    className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 hover:border-[var(--color-accent)] disabled:opacity-50"
+                  >
+                    {selected.isPublic ? "Hacer privada" : "Publicar"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionBusy}
+                    onClick={() => void removeItem(selected)}
+                    className="rounded-md border border-[var(--color-danger)]/50 px-3 py-1.5 text-[var(--color-danger)] hover:border-[var(--color-danger)] disabled:opacity-50"
+                  >
+                    Borrar
+                  </button>
+                </div>
+                {!selected.isPublic && (
+                  <p className="text-[11px] text-[var(--color-text-muted)]">Publicar requiere plan Pro.</p>
+                )}
+                {actionMsg && <p className="text-xs text-[var(--color-text-secondary)]">{actionMsg}</p>}
                 <a href={selected.imageUrl} target="_blank" rel="noreferrer" className="inline-block text-[var(--color-accent)] hover:underline">Abrir original</a>
               </div>
             </div>

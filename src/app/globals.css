@@ -6,7 +6,7 @@
 
 @theme {
   /* Fondo - claro beige pastel, cálido y que no deslumbra (dirección estética) */
-  --color-bg-base: #f3efe6;       /* beige cálido de fondo */
+  --color-bg-base: #f1ecdc;       /* beige cálido de fondo */
   --color-bg-panel: #fbf8f1;      /* superficie de tarjeta */
   --color-bg-panel-2: #efe9dc;    /* superficie secundaria / hover */
 
@@ -146,7 +146,24 @@ input[type="checkbox"] {
    Dos filas: una avanza hacia la izquierda y otra hacia la derecha (reverse). */
 .pmarquee { animation: marquee 48s linear infinite; will-change: transform; }
 .pmarquee.reverse { animation-direction: reverse; }
-.pmarquee-pause:hover .pmarquee { animation-play-state: paused; }
+
+/* Pausa al señalar una miniatura concreta. La clase .is-paused / .is-stopped la
+   pone el componente con JS (estado de hover), así funciona en TODOS los
+   navegadores (sin depender de :has()). */
+.pmarquee.is-paused { animation-play-state: paused; }
+/* Todos los pingüinos parados se quedan en el frame 0 del sprite de deslizar. */
+.pmarquee.is-paused .peng {
+  animation: none;
+  background-position: 0 0;
+}
+/* ...excepto el de la miniatura señalada, que muestra el pingüino de pie, subido
+   para que su culo quede a la altura de la panza del que se desliza (−16px). */
+.thumb-card.is-stopped .peng {
+  background-image: url("/sprites/penguin-stop.png");
+  background-size: var(--fw) var(--fw);
+  background-position: 0 0;
+  transform: translateY(-16px);
+}
 
 /* Cuadros pastel decorativos flotando (landing). */
 @keyframes float-soft {
@@ -161,7 +178,7 @@ input[type="checkbox"] {
 /* TAMAÑO de los pingüinos del slider: cambia --fw (ancho de un frame). El resto
    (tamaño del sprite y posiciones de los fotogramas) se recalcula solo. */
 .peng {
-  --fw: 64px;
+  --fw: 72px;
   width: var(--fw);
   height: var(--fw);
   background-image: url("/sprites/penguin-slide.png");
@@ -172,33 +189,9 @@ input[type="checkbox"] {
 }
 .peng--flip { transform: scaleX(-1); }
 
-/* CONFIGURACIÓN DE FOTOGRAMAS del slider (3 disposiciones). Cada número es el
-   índice de frame (0–5); cambia estas secuencias para variar el "andar". */
-/* A: ciclo completo 0,1,2,3,4,5. */
-@keyframes peng-walk { from { background-position-x: 0; } to { background-position-x: calc(var(--fw) * -6); } }
-/* B: vaivén 0,1,2,3,2,1. */
-@keyframes peng-bounce {
-  0%     { background-position-x: calc(var(--fw) * 0); }
-  16.66% { background-position-x: calc(var(--fw) * -1); }
-  33.33% { background-position-x: calc(var(--fw) * -2); }
-  50%    { background-position-x: calc(var(--fw) * -3); }
-  66.66% { background-position-x: calc(var(--fw) * -2); }
-  83.33% { background-position-x: calc(var(--fw) * -1); }
-  100%   { background-position-x: calc(var(--fw) * 0); }
-}
-/* C: saltado 0,2,4,5,3,1. */
-@keyframes peng-skip {
-  0%     { background-position-x: calc(var(--fw) * 0); }
-  16.66% { background-position-x: calc(var(--fw) * -2); }
-  33.33% { background-position-x: calc(var(--fw) * -4); }
-  50%    { background-position-x: calc(var(--fw) * -5); }
-  66.66% { background-position-x: calc(var(--fw) * -3); }
-  83.33% { background-position-x: calc(var(--fw) * -1); }
-  100%   { background-position-x: calc(var(--fw) * 0); }
-}
-.peng-a { animation: peng-walk 0.8s steps(6) infinite; }
-.peng-b { animation: peng-bounce 0.95s step-end infinite; }
-.peng-c { animation: peng-skip 1.1s step-end infinite; }
+/* Las 3 listas de fotogramas y su animación se generan desde los arrays
+   FRAME_SEQUENCES de src/components/ui/PenguinThumbnailMarquee.tsx
+   (edita ahí las secuencias). */
 
 /* -------- Pingüino PINTOR del loader "Creando tu miniatura" ---------------- */
 /* /sprites/penguin.png = 11 frames de 50×50 (sheet 550×50). Sprite CSS puro.
@@ -279,6 +272,6 @@ input[type="checkbox"] {
   .marquee-track { animation: none; }
   .pmarquee { animation: none; }
   .float-soft { animation: none; }
-  .peng-a, .peng-b, .peng-c, .peng-paint { animation: none; }
+  .peng-v0, .peng-v1, .peng-v2, .peng-paint { animation: none; }
   .on-scroll-rise { opacity: 1 !important; animation: none !important; }
 }

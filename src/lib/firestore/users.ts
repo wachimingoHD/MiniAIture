@@ -37,7 +37,15 @@ export async function getOrCreateUserDocument(db: Firestore, args: {
   return db.runTransaction(async (tx) => {
     const snapshot = await tx.get(ref);
     if (snapshot.exists) {
-      return snapshot.data() as UserDocument;
+      const existing = snapshot.data() as UserDocument;
+      // Backfill: si el doc no tenía displayName y ahora llega el de Google, lo
+      // guardamos (la galería pública lo usa como autor).
+      const incoming = args.displayName?.trim();
+      if (incoming && !existing.displayName) {
+        tx.set(ref, { displayName: incoming } as Partial<UserDocument>, { merge: true });
+        return { ...existing, displayName: incoming };
+      }
+      return existing;
     }
 
     const initial = buildInitialUserDocument({

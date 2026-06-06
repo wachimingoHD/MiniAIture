@@ -21,7 +21,30 @@ async function loadPublicThumbs(): Promise<MarqueeThumb[]> {
       limit: 24,
       orderBy: "timesStyleCopied",
     });
-    return gens.map((g) => ({ id: g.id, imageUrl: g.imageUrl, prompt: g.userPrompt }));
+
+    // Nombre del autor: lo buscamos en la colección `users` (deduplicado).
+    // (La foto del autor no se guarda aún; el modal usa avatar con inicial.)
+    const userIds = [...new Set(gens.map((g) => g.userId).filter(Boolean))];
+    const names = new Map<string, string>();
+    await Promise.all(
+      userIds.map(async (uid) => {
+        try {
+          const snap = await db.collection("users").doc(uid).get();
+          const name = (snap.data() as { displayName?: string } | undefined)?.displayName;
+          if (name) names.set(uid, name);
+        } catch {
+          /* ignore */
+        }
+      }),
+    );
+
+    return gens.map((g) => ({
+      id: g.id,
+      imageUrl: g.imageUrl,
+      prompt: g.videoTitle ?? g.userPrompt,
+      stylePrompt: g.stylePrompt,
+      authorName: names.get(g.userId) ?? "Anónimo",
+    }));
   } catch {
     return [];
   }
@@ -64,8 +87,9 @@ export default async function LandingPage() {
         ))}
       </div>
 
-      {/* HERO — ocupa casi toda la altura; deja asomar los pingüinos al deslizar. */}
-      <section className="relative z-10 mx-auto flex min-h-[88vh] max-w-[1200px] flex-col items-center justify-center px-4 text-center md:px-8">
+      <main>
+        {/* HERO — ocupa casi toda la altura; deja asomar los pingüinos al deslizar. */}
+        <section className="relative z-10 mx-auto flex min-h-[88vh] max-w-[1200px] flex-col items-center justify-center px-4 text-center md:px-8">
         <h1 className="font-display text-[clamp(2.25rem,10vw,8.5rem)] font-extrabold leading-[1.05] tracking-tight">
           Mini<span className="text-[var(--color-accent)]">AI</span>tura
         </h1>
@@ -95,7 +119,8 @@ export default async function LandingPage() {
           Últimas generaciones de la comunidad
         </h2>
         <PenguinThumbnailMarquee items={thumbs} />
-      </section>
+        </section>
+      </main>
     </div>
   );
 }
