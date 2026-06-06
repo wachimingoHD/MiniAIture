@@ -2,40 +2,15 @@
 
 // Loader de generación (doc §Estado de carga)
 // =============================================================================
-// Reemplaza el spinner/barra de progreso: una mascota pinta un lienzo que se va
-// llenando de color, con puntos suspensivos animados. Respeta prefers-reduced-
-// motion vía las clases CSS (definidas en globals.css).
+// Sprite CSS puro (sin DOM/JS de animación): el pingüino pintor de
+// /sprites/penguin.png se anima vía la clase global .peng-paint. Los puntos
+// suspensivos y el respeto a prefers-reduced-motion se definen en CSS.
 // =============================================================================
-
-import Mascot from "./Mascot";
 
 export function MascotLoader({ fetchMode = false }: { fetchMode?: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center gap-5 py-10 text-center">
-      <div className="relative h-[140px] w-[200px]" aria-hidden>
-        {/* Lienzo */}
-        <div className="absolute bottom-3 right-4 h-[110px] w-[120px] overflow-hidden rounded-md border-2 border-[var(--color-border-strong)] bg-[var(--color-bg-panel-2)]">
-          <div
-            className="paint-fill absolute inset-x-0 bottom-0 h-full"
-            style={{
-              background:
-                "linear-gradient(180deg, var(--color-accent) 0%, var(--color-accent-2) 100%)",
-              opacity: 0.55,
-            }}
-          />
-        </div>
-        {/* Caballete (patas) */}
-        <div className="absolute bottom-0 right-9 h-4 w-1 -rotate-12 rounded bg-[var(--color-border-strong)]" />
-        <div className="absolute bottom-0 right-20 h-4 w-1 rotate-12 rounded bg-[var(--color-border-strong)]" />
-        {/* Mascota pintora */}
-        <div className="absolute bottom-2 left-1 mascot-bob">
-          <Mascot color="lavender" mood="work" size={64} title="Mascota pintando tu miniatura" />
-          {/* Pincel */}
-          <div className="mascot-brush absolute right-1 top-7 h-8 w-1.5 rounded-full bg-[var(--color-accent-2)]">
-            <span className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-[var(--color-accent)]" />
-          </div>
-        </div>
-      </div>
+      <div className="peng-paint" aria-hidden />
 
       <div>
         <p className="font-display text-lg">

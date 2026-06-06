@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Baloo_2, DM_Sans } from "next/font/google";
 import "./globals.css";
+import Sidebar from "@/components/ui/Sidebar";
 
 const display = Baloo_2({
   subsets: ["latin"],
@@ -42,8 +43,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" className={`dark ${display.variable} ${body.variable}`}>
-      <body>{children}</body>
+    <html lang="es" className={`${display.variable} ${body.variable}`}>
+      <body>
+        <Sidebar />
+        <div className="min-h-screen pl-16">{children}</div>
+      </body>
     </html>
   );
 }
