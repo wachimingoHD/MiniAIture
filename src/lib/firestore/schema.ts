@@ -56,6 +56,8 @@ export interface UserDocument {
   subscriptionStatus?: SubscriptionStatus;
   subscriptionStart?: string;
   subscriptionEnd?: string;
+  /** true si la suscripción se cancelará al final del periodo ya pagado. */
+  cancelAtPeriodEnd?: boolean;
   credits: UserCredits;
   affiliate?: UserAffiliate;
   stats: UserStats;

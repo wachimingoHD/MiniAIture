@@ -92,7 +92,7 @@ function Carrier({
 
   return (
     <div
-      className={`group thumb-card relative mr-12 w-44 shrink-0 pb-[40px] hover:z-20 sm:w-52 ${stopped ? "is-stopped" : ""}`}
+      className={`group thumb-card relative mr-14 w-60 shrink-0 pb-[40px] hover:z-20 sm:w-80 ${stopped ? "is-stopped" : ""}`}
       onMouseEnter={() => onHover(index)}
       onMouseLeave={() => onHover(null)}
     >

@@ -2,30 +2,47 @@ import type { Plan } from "@/lib/firestore/schema";
 
 export type UserFacingResolution = "512" | "1K" | "2K" | "4K";
 
-export interface CreditPricingInput {
-  plan: Plan;
-  // `lowPriority` === modo Fetch. Para FREE es siempre true (forzado) pero NO
-  // cambia el coste. Para PRO es opcional y aplica el descuento.
-  lowPriority: boolean;
-  // Se conserva por compatibilidad de firma con el frontend, pero el modelo de
-  // precios del doc §2 es PLANO: no depende de la resolución.
-  resolution?: UserFacingResolution;
+// Modos de generación (PRO). FREE ignora todos: coste fijo, 512, cola forzada.
+export interface GenerationModes {
+  saver: boolean; // "Ahorro": cola de baja prioridad (flex). -25 créditos.
+  highQuality: boolean; // "Alta calidad": genera nativo en 1K. +25 créditos.
+  highRes: boolean; // "Alta resolución": resultado final a 2K. +25 créditos.
 }
 
 export const BASE_GENERATION_CREDITS = 100;
-export const FETCH_PRO_CREDITS = 70; // PRO con modo Fetch (doc §2.1 / §2.4)
+export const MODE_DELTA_CREDITS = 25;
 
-// Modelo de precios plano (doc §2.1, §2.4, §9.2):
-//   FREE  -> 100 siempre (fetch es su modo por defecto, no descuenta)
-//   PRO   -> 100 normal / 70 si modo fetch (lowPriority)
-export function computeGenerationCreditsCost(input: CreditPricingInput): number {
-  if (input.plan === "free") return BASE_GENERATION_CREDITS;
-  return input.lowPriority ? FETCH_PRO_CREDITS : BASE_GENERATION_CREDITS;
+// Modelo por modos (doc §2 actualizado):
+//   FREE -> 100 fijo.
+//   PRO  -> 100 base; -25 ahorro; +25 alta calidad; +25 alta resolución (acumulables).
+export function computeGenerationCreditsCost(plan: Plan, modes: GenerationModes): number {
+  if (plan === "free") return BASE_GENERATION_CREDITS;
+  let credits = BASE_GENERATION_CREDITS;
+  if (modes.saver) credits -= MODE_DELTA_CREDITS;
+  if (modes.highQuality) credits += MODE_DELTA_CREDITS;
+  if (modes.highRes) credits += MODE_DELTA_CREDITS;
+  return credits;
 }
 
-// Modo efectivo de generación según plan + toggle de fetch (doc §9.2).
-// El fallback a "flex" cuando Gemini rechaza se decide en el flujo de generación.
-export function resolveGenerationMode(plan: Plan, lowPriority: boolean): "normal" | "fetch" {
-  if (plan === "free") return "fetch"; // FREE siempre fetch (automático)
-  return lowPriority ? "fetch" : "normal";
+// Deriva los modos desde los params técnicos YA validados (no se confía en el
+// cliente): la calidad alta = genera nativo en 1K; la resolución alta = final 2K+.
+export function deriveModesFromParams(p: {
+  resolution: string;
+  flex_mode: boolean;
+  upscale_enabled: boolean;
+  upscale_resolution: string;
+}): GenerationModes {
+  const finalRes = p.upscale_enabled ? p.upscale_resolution : p.resolution;
+  return {
+    saver: !!p.flex_mode,
+    highQuality: p.resolution === "1K",
+    highRes: finalRes === "2K" || finalRes === "4K",
+  };
+}
+
+// Modo efectivo de generación según plan + ahorro (doc §9.2). FREE siempre cola.
+// El fallback a "normal" cuando la cola falla se decide en el flujo (solo PRO).
+export function resolveGenerationMode(plan: Plan, saver: boolean): "normal" | "fetch" {
+  if (plan === "free") return "fetch";
+  return saver ? "fetch" : "normal";
 }

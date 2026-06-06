@@ -314,6 +314,10 @@ export function isGoogleCapacityFailure(failure: FailureDetail): boolean {
 
 export function shouldFallbackToFal(failure: FailureDetail): boolean {
   if (failure.fallbackEligible) return true;
+  // Rechazo por contenido (p. ej. caras de famosos): Gemini no genera imagen,
+  // así que probamos en Fal (doc: fallback por contenido). NO incluye AUTH ni
+  // INVALID_REQUEST (errores nuestros) ni capacidad (lo cubre el reintento normal).
+  if (failure.reason === "CONTENT_BLOCKED" || failure.reason === "SAFETY") return true;
   if (failure.reason === "OTHER" || failure.reason === "IMAGE_OTHER") return true;
   if (failure.statusCode && failure.statusCode >= 500) return true;
   if (failure.statusCode === 429) return true;

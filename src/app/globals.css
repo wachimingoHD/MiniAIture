@@ -144,7 +144,7 @@ input[type="checkbox"] {
 
 /* Slider de pingüinos que cargan miniaturas públicas (landing).
    Dos filas: una avanza hacia la izquierda y otra hacia la derecha (reverse). */
-.pmarquee { animation: marquee 48s linear infinite; will-change: transform; }
+.pmarquee { animation: marquee 80s linear infinite; will-change: transform; }
 .pmarquee.reverse { animation-direction: reverse; }
 
 /* Pausa al señalar una miniatura concreta. La clase .is-paused / .is-stopped la
@@ -247,6 +247,33 @@ input[type="checkbox"] {
   94.595% { background-position-x: calc(var(--fw) * -10); }
   97.297% { background-position-x: calc(var(--fw) * -10); }
   100% { background-position-x: calc(var(--fw) * -10); }
+}
+
+/* -------- Pingüino VACÍO del estado "Aún no hay nada" --------- */
+/* /sprites/penguin-empty.png = 22 frames. Animación idle personalizada. */
+.peng-empty {
+  --fw: 72px;
+  width: var(--fw);
+  height: var(--fw);
+  background-image: url("/sprites/penguin-empty.png");
+  background-repeat: no-repeat;
+  background-size: calc(var(--fw) * 22) var(--fw); /* 22 frames */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  animation: peng-empty 4s step-end infinite;
+}
+@keyframes peng-empty {
+  0%     { background-position-x: calc(var(--fw) * -1); }
+  10%    { background-position-x: calc(var(--fw) * 0); }
+  20%    { background-position-x: calc(var(--fw) * -1); }
+  30%    { background-position-x: calc(var(--fw) * 0); }
+  40%    { background-position-x: calc(var(--fw) * -3); }
+  50%    { background-position-x: calc(var(--fw) * -2); }
+  60%    { background-position-x: calc(var(--fw) * -3); }
+  70%    { background-position-x: calc(var(--fw) * -2); }
+  80%    { background-position-x: calc(var(--fw) * -10); }
+  90%    { background-position-x: calc(var(--fw) * -11); }
+  100%   { background-position-x: calc(var(--fw) * -0); }
 }
 
 /* -------- Reveal al hacer scroll, 100% CSS (animation-timeline) ------------- */

@@ -23,7 +23,7 @@ export default function UseStyleButton({ generationId }: { generationId: string 
         } catch {
           // El conteo es best-effort; continuar igualmente.
         } finally {
-          router.push(`/?styleFrom=${encodeURIComponent(generationId)}`);
+          router.push(`/generate?styleFrom=${encodeURIComponent(generationId)}`);
         }
       }}
       className="w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-accent)]/10 px-3 py-2 text-sm font-medium hover:border-[var(--color-accent)] disabled:opacity-50"

@@ -116,6 +116,7 @@ async function onSubscriptionCreated(db: Firestore, sub: Stripe.Subscription): P
       stripeCustomerId: customerId,
       stripeSubscriptionId: sub.id,
       subscriptionStatus: subscriptionStatusToApp(sub.status),
+      cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
       subscriptionStart: new Date(subscriptionStart).toISOString(),
       subscriptionEnd: new Date(subscriptionEnd).toISOString(),
       credits: {
@@ -146,6 +147,7 @@ async function onSubscriptionDeleted(db: Firestore, sub: Stripe.Subscription): P
     {
       plan: "free",
       subscriptionStatus: "canceled",
+      cancelAtPeriodEnd: false,
     } satisfies Partial<UserDocument>,
     { merge: true },
   );

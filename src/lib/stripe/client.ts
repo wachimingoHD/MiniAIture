@@ -86,6 +86,14 @@ export async function createProCheckoutSession(input: CreateCheckoutSessionInput
   return session.url;
 }
 
+// Programa la cancelación al final del periodo ya pagado (no corta el acceso
+// inmediato). El webhook customer.subscription.updated/deleted actualizará el doc.
+export async function cancelSubscriptionAtPeriodEnd(subscriptionId: string): Promise<void> {
+  const stripe = getStripeClient();
+  if (!stripe) throw new Error("Stripe no configurado: faltan STRIPE_* env vars.");
+  await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+}
+
 export function verifyWebhookSignature(payload: string, signature: string): Stripe.Event {
   const cfg = getStripeConfig();
   const stripe = getStripeClient();

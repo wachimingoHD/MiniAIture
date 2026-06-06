@@ -7,6 +7,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import MascotEmpty from "@/components/mascots/MascotEmpty";
 import { signInWithGoogle, signOutUser, subscribeToAuthState } from "@/lib/auth/firebase-client";
 
 interface GenerationItem {
@@ -234,8 +235,9 @@ export default function PersonalGalleryPage() {
           <strong className="text-[var(--color-danger)]">Error:</strong> {error}
         </div>
       ) : images.length === 0 ? (
-        <div className="mt-6 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-4 text-sm text-[var(--color-text-muted)]">
-          Aún no tienes miniaturas. Genera una y aparecerá aquí.
+        <div className="mt-6 flex flex-col items-center gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-8 text-center">
+          <MascotEmpty />
+          <p className="text-sm text-[var(--color-text-muted)]">Aún no tienes miniaturas. Genera una y aparecerá aquí.</p>
         </div>
       ) : (
         <>
@@ -301,9 +303,6 @@ export default function PersonalGalleryPage() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={selected.imageUrl} alt="Miniatura seleccionada" className="w-full rounded-md border border-[var(--color-border)]" />
               <div className="space-y-3 text-sm">
-                <p className="text-[var(--color-text-muted)]"><strong className="text-[var(--color-text-primary)]">Proveedor:</strong> {selected.provider}</p>
-                <p className="text-[var(--color-text-muted)]"><strong className="text-[var(--color-text-primary)]">Resolución:</strong> {selected.resolution}</p>
-                <p className="text-[var(--color-text-muted)]"><strong className="text-[var(--color-text-primary)]">Modo:</strong> {selected.mode}</p>
                 <div>
                   <p className="mb-1"><strong>Tu descripción</strong></p>
                   <p className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2 text-[var(--color-text-secondary)]">{selected.userPrompt}</p>

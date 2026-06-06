@@ -79,8 +79,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     uid: user.uid,
     displayName: finalDoc.displayName ?? null,
+    email: finalDoc.email ?? null,
     plan: finalDoc.plan,
     credits: finalDoc.credits,
+    stats: finalDoc.stats ?? null,
     subscriptionStatus: finalDoc.subscriptionStatus ?? null,
+    subscriptionStart: finalDoc.subscriptionStart ?? null,
+    subscriptionEnd: finalDoc.subscriptionEnd ?? null,
+    cancelAtPeriodEnd: finalDoc.cancelAtPeriodEnd ?? false,
   });
 }

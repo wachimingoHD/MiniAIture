@@ -25,6 +25,7 @@ import {
 import {
   BASE_GENERATION_CREDITS,
   computeGenerationCreditsCost,
+  deriveModesFromParams,
   resolveGenerationMode,
   type UserFacingResolution,
 } from "@/lib/firestore/credit-pricing";
@@ -203,11 +204,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const generationCreditsCost = computeGenerationCreditsCost({
-      plan: userDoc.plan,
-      lowPriority: requestedLowPriority,
-      resolution: userFacingResolution,
-    });
+    const generationCreditsCost = computeGenerationCreditsCost(
+      userDoc.plan,
+      deriveModesFromParams(params),
+    );
 
     const charge = await deductGenerationCredits(db, {
       uid: authenticatedUser.uid,
@@ -299,8 +299,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     let googleTierFallback: GenerateResponse["googleTierFallback"];
     let primaryFailure: FailureDetail | undefined;
 
-    // ---------------- 2) Flex -> Standard retry on capacity failure ----------------
-    if (!googleResult.ok && googleResult.tier === "flex" && isGoogleCapacityFailure(googleResult.failure)) {
+    // ---------------- 2) Cola -> Normal retry on capacity failure (SOLO PRO) ----------------
+    // Si la cola de baja prioridad (flex) cae, los PRO reintentan en Gemini normal.
+    // Los FREE NO tienen este fallback (su modo siempre es la cola).
+    if (userPlan === "pro" && !googleResult.ok && googleResult.tier === "flex" && isGoogleCapacityFailure(googleResult.failure)) {
       const capacityFailure = googleResult.failure;
       const standardAttempt = await runGoogleGeneration({
         params,
