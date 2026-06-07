@@ -10,6 +10,7 @@ import Link from "next/link";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
 import { getPublicGenerations, type GenerationWithId } from "@/lib/firestore/generations";
 import { generateAltText } from "@/lib/seo";
+import PageHeader from "@/components/ui/PageHeader";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,19 +42,15 @@ export default async function PublicGalleryPage() {
 
   return (
     <main className="mx-auto max-w-[1200px] px-4 py-8 md:px-8 md:py-12">
-      <header className="flex items-center justify-between border-b border-[var(--color-border)] pb-5">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Galería de miniaturas creadas por la comunidad
-          </h1>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            Miniaturas de YouTube generadas con IA. Haz clic para ver el estilo.
-          </p>
-        </div>
-        <Link href="/" className="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]">
-          App
-        </Link>
-      </header>
+      <PageHeader subtitle="Galería de la comunidad" />
+      <div className="mt-6">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Galería de miniaturas creadas por la comunidad
+        </h1>
+        <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+          Miniaturas de YouTube generadas con IA. Haz clic para ver el estilo.
+        </p>
+      </div>
 
       {items.length === 0 ? (
         <p className="mt-8 text-sm text-[var(--color-text-muted)]">

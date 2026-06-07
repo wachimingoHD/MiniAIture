@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   DEFAULT_NANO_BANANA_PARAMS,
@@ -22,6 +23,7 @@ import { computeGenerationCreditsCost } from "@/lib/firestore/credit-pricing";
 import { STYLE_PRESETS } from "@/lib/constants/style-presets";
 import MascotLoader from "@/components/mascots/MascotLoader";
 import MascotEmpty from "@/components/mascots/MascotEmpty";
+import PublishConfirmModal from "@/components/ui/PublishConfirmModal";
 import {
   getCurrentIdToken,
   signInWithGoogle,
@@ -36,6 +38,13 @@ type StyleSource = { kind: "custom" | "preset" | "gallery"; id: string | null; n
 const EMPTY_STYLE: StyleSource = { kind: "custom", id: null, nicho: null, base: "" };
 
 const FORM_STORAGE_KEY = "miniaitura:genform:v1";
+const PREFILL_STORAGE_KEY = "miniaitura:prefill";
+
+// Cache a nivel de módulo para que la precarga sobreviva al doble montaje de
+// React StrictMode en desarrollo (que resetea el estado del componente). En el
+// primer montaje leemos+borramos sessionStorage y lo guardamos aquí; el segundo
+// montaje lo reaplica desde esta variable. Se limpia al consumirlo.
+let pendingPrefill: { content?: string; style?: string; styleFromId?: string } | null = null;
 
 interface PersistedReference {
   id: string;
@@ -43,12 +52,12 @@ interface PersistedReference {
   mimeType: string;
   size: number;
   base64: string;
+  instructions: string;
 }
 
 interface PersistedForm {
   params: NanoBananaParams;
   videoTitle: string;
-  referenceInstructions: string;
   styleText: string;
   styleSource: StyleSource;
   saver: boolean;
@@ -64,6 +73,7 @@ interface UploadedReference {
   size: number;
   base64: string;
   previewUrl: string;
+  instructions: string;
 }
 
 function formatBytes(bytes: number): string {
@@ -86,16 +96,18 @@ export default function HomePage() {
   const [creditSnapshot, setCreditSnapshot] = useState<{ daily: number; monthly: number } | null>(null);
 
   // Opciones PRO (toggles). FREE las ignora (512 + cola forzada).
-  const [saver, setSaver] = useState(false); // ahorro (cola baja prioridad)
+  const [saver, setSaver] = useState(true); // ahorro (cola baja prioridad) — marcado por defecto
   const [highQuality, setHighQuality] = useState(false); // genera nativo en 1K
   const [highRes, setHighRes] = useState(false); // resultado final 2K
 
   // Campos del formulario (doc §4)
   const [videoTitle, setVideoTitle] = useState(""); // campo 1
-  const [referenceInstructions, setReferenceInstructions] = useState(""); // campo 3
   const [styleText, setStyleText] = useState(""); // campo Estilo (texto copiable)
   const [styleSource, setStyleSource] = useState<StyleSource>(EMPTY_STYLE);
   const [publishMsg, setPublishMsg] = useState<string | null>(null);
+  // Sugeridor de estilo con IA (botón "Sugerir estilo con IA").
+  const [suggestingStyle, setSuggestingStyle] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
 
   // Aplica un preset al campo de estilo (queda editable).
   const applyPreset = (p: (typeof STYLE_PRESETS)[number]) => {
@@ -151,7 +163,6 @@ export default function HomePage() {
         const s = JSON.parse(raw) as Partial<PersistedForm>;
         if (s.params) setParams(s.params);
         if (typeof s.videoTitle === "string") setVideoTitle(s.videoTitle);
-        if (typeof s.referenceInstructions === "string") setReferenceInstructions(s.referenceInstructions);
         if (typeof s.styleText === "string") setStyleText(s.styleText);
         if (s.styleSource) setStyleSource(s.styleSource);
         if (typeof s.saver === "boolean") setSaver(s.saver);
@@ -159,7 +170,39 @@ export default function HomePage() {
         if (typeof s.highRes === "boolean") setHighRes(s.highRes);
         if (Array.isArray(s.referenceImages)) {
           setReferenceImages(
-            s.referenceImages.map((r) => ({ ...r, previewUrl: `data:${r.mimeType};base64,${r.base64}` })),
+            s.referenceImages.map((r) => ({
+              ...r,
+              instructions: typeof r.instructions === "string" ? r.instructions : "",
+              previewUrl: `data:${r.mimeType};base64,${r.base64}`,
+            })),
+          );
+        }
+      }
+
+      // Precarga desde la galería pública (botones "Usar contenido/estilo/ambos").
+      // Sobrescribe el contenido/estilo del formulario restaurado.
+      let pf = pendingPrefill;
+      pendingPrefill = null;
+      if (!pf) {
+        const prefillRaw = sessionStorage.getItem(PREFILL_STORAGE_KEY);
+        if (prefillRaw) {
+          pf = JSON.parse(prefillRaw) as { content?: string; style?: string; styleFromId?: string };
+          sessionStorage.removeItem(PREFILL_STORAGE_KEY);
+          pendingPrefill = pf; // que el segundo montaje (StrictMode) lo reaplique
+        }
+      }
+      if (pf) {
+        if (typeof pf.content === "string") {
+          const content = pf.content;
+          setParams((prev) => ({ ...prev, prompt: content }));
+        }
+        if (typeof pf.style === "string") {
+          const style = pf.style;
+          setStyleText(style);
+          setStyleSource(
+            pf.styleFromId
+              ? { kind: "gallery", id: pf.styleFromId, nicho: null, base: style }
+              : { kind: "custom", id: null, nicho: null, base: style },
           );
         }
       }
@@ -175,7 +218,6 @@ export default function HomePage() {
     const core = {
       params,
       videoTitle,
-      referenceInstructions,
       styleText,
       styleSource,
       saver,
@@ -188,6 +230,7 @@ export default function HomePage() {
       mimeType: r.mimeType,
       size: r.size,
       base64: r.base64,
+      instructions: r.instructions,
     }));
     try {
       sessionStorage.setItem(FORM_STORAGE_KEY, JSON.stringify({ ...core, referenceImages: refs }));
@@ -202,7 +245,6 @@ export default function HomePage() {
   }, [
     params,
     videoTitle,
-    referenceInstructions,
     styleText,
     styleSource,
     saver,
@@ -213,6 +255,39 @@ export default function HomePage() {
 
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const contentRef = useRef<HTMLTextAreaElement | null>(null);
+  // Contador de drag para que el resalte no parpadee al pasar sobre hijos
+  // (dragenter/dragleave disparan por cada elemento hijo).
+  const dragCounter = useRef(0);
+
+  // Actualiza las instrucciones de UNA imagen de referencia concreta.
+  const setRefInstruction = useCallback((id: string, text: string) => {
+    setReferenceImages((prev) => prev.map((r) => (r.id === id ? { ...r, instructions: text } : r)));
+  }, []);
+
+  // Inserta una etiqueta `[Imagen N]` en el campo Contenido, en la posición del
+  // cursor (o al final si el campo no tiene foco). Así el usuario puede referirse
+  // a una imagen concreta desde el texto del contenido.
+  const insertRefToken = useCallback((label: string) => {
+    const token = `[${label}]`;
+    const el = contentRef.current;
+    setParams((prev) => {
+      const cur = prev.prompt;
+      const start = el?.selectionStart ?? cur.length;
+      const end = el?.selectionEnd ?? cur.length;
+      const needsSpaceBefore = start > 0 && !/\s$/.test(cur.slice(0, start));
+      const insert = (needsSpaceBefore ? " " : "") + token + " ";
+      const nextPrompt = cur.slice(0, start) + insert + cur.slice(end);
+      if (el) {
+        const pos = start + insert.length;
+        requestAnimationFrame(() => {
+          el.focus();
+          el.setSelectionRange(pos, pos);
+        });
+      }
+      return { ...prev, prompt: nextPrompt };
+    });
+  }, []);
 
   const pricingPlan = planLabel ?? "free";
   const isFreePlan = planLabel !== "pro";
@@ -303,12 +378,50 @@ export default function HomePage() {
         size: file.size,
         base64,
         previewUrl: URL.createObjectURL(file),
+        instructions: "",
       });
       totalBytes += file.size;
     }
     setReferenceImages(next);
     setReferenceError(error);
   }, [referenceImages]);
+
+  // Pide a la IA (Gemini 2.5 Flash) una dirección de estilo a partir del título
+  // y el contenido. Cuesta 1 crédito (se reembolsa en el servidor si falla).
+  const suggestStyle = async () => {
+    const title = videoTitle.trim();
+    const content = params.prompt.trim();
+    if (!title && !content) {
+      setSuggestError("Escribe un título o describe el contenido del vídeo primero.");
+      return;
+    }
+    const token = authToken ?? (await getCurrentIdToken());
+    if (!token) {
+      setSuggestError("Inicia sesión para sugerir un estilo.");
+      return;
+    }
+    setSuggestingStyle(true);
+    setSuggestError(null);
+    try {
+      const res = await fetch("/api/suggest-style", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ videoTitle: title, content }),
+      });
+      const data = (await res.json()) as { style?: string; error?: string; creditsRemaining?: { daily: number; monthly: number } };
+      if (data.creditsRemaining) setCreditSnapshot(data.creditsRemaining);
+      if (!res.ok || !data.style) {
+        setSuggestError(data.error ?? "No se pudo sugerir un estilo.");
+        return;
+      }
+      setStyleText(data.style);
+      setStyleSource({ kind: "custom", id: null, nicho: null, base: data.style });
+    } catch (err) {
+      setSuggestError((err as Error).message);
+    } finally {
+      setSuggestingStyle(false);
+    }
+  };
 
   const generate = async () => {
     if (!derivedParams.prompt.trim()) {
@@ -326,6 +439,14 @@ export default function HomePage() {
 
     const refs: ReferenceImageInput[] = referenceImages.map((r) => ({ data: r.base64, mimeType: r.mimeType, filename: r.filename, size: r.size }));
 
+    // Combina las instrucciones por imagen, etiquetadas "Imagen N" en el mismo
+    // orden en que se envían las imágenes, para que el LLM pueda relacionar cada
+    // referencia con su `[Imagen N]` citada en el Contenido.
+    const combinedReferenceInstructions = referenceImages
+      .map((r, i) => (r.instructions.trim() ? `Imagen ${i + 1}: ${r.instructions.trim()}` : null))
+      .filter(Boolean)
+      .join("\n");
+
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -336,7 +457,7 @@ export default function HomePage() {
           // Campos del enhancer / generations (doc §3.3 / §4 / §10)
           videoTitle: videoTitle.trim() || null,
           userPrompt: derivedParams.prompt,
-          referenceInstructions: referenceImages.length > 0 ? referenceInstructions.trim() || null : null,
+          referenceInstructions: combinedReferenceInstructions || null,
           styleType: styleSelection.styleType,
           styleId: styleSelection.styleId,
           stylePrompt: styleSelection.stylePrompt,
@@ -365,8 +486,8 @@ export default function HomePage() {
     <main className="mx-auto max-w-[1480px] px-4 py-6 md:px-8 md:py-10">
       <header className="flex items-center justify-between border-b border-[var(--color-border)] pb-5">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">MiniAItures</h1>
-          <p className="text-xs text-[var(--color-text-muted)]">AI-generated YouTube thumbnails - Gemini + fal.ai</p>
+          <h1 className="font-display text-xl font-bold tracking-tight">Mini<span className="text-[var(--color-accent)]">AI</span>tura</h1>
+          <p className="text-xs text-[var(--color-text-muted)]">Crea miniaturas de YouTube con IA</p>
         </div>
         <nav className="hidden items-center gap-4 text-sm text-[var(--color-text-secondary)] md:flex">
           <Link href="/pricing" className="hover:text-[var(--color-accent)]">Pricing</Link>
@@ -375,17 +496,32 @@ export default function HomePage() {
             <>
               <Link href="/dashboard/gallery" className="hover:text-[var(--color-accent)]">Mi galería</Link>
               <Link href="/dashboard/settings" className="hover:text-[var(--color-accent)]">Ajustes</Link>
-              <div className="text-right text-xs">
-                <p className="text-[var(--color-text-primary)]">{authEmail}</p>
-                <p className="text-[var(--color-text-muted)]">
-                  {planLabel ? planLabel.toUpperCase() : "PLAN ?"}
-                  {creditSnapshot ? ` - Daily ${creditSnapshot.daily} - Monthly ${creditSnapshot.monthly}` : ""}
-                </p>
+              <div className="flex flex-col items-end gap-1.5">
+                <p className="text-xs text-[var(--color-text-muted)]">{authEmail}</p>
+                <div className="flex items-center gap-2.5">
+                  <span className="rounded-full border border-[var(--color-accent)]/30 bg-[var(--color-accent-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--color-accent-strong)]">
+                    {planLabel ? planLabel : "plan ?"}
+                  </span>
+                  {creditSnapshot && (
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="inline-flex items-center gap-1.5 text-[var(--color-success)]">
+                        <span className="h-2 w-2 rounded-full bg-[var(--color-success)]" />
+                        <span className="font-semibold tabular-nums">{creditSnapshot.daily}</span>
+                        <span className="text-[var(--color-text-muted)]">diarios</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 text-[var(--color-text-muted)]">
+                        <span className="h-2 w-2 rounded-full bg-[var(--color-text-muted)]" />
+                        <span className="font-semibold tabular-nums">{creditSnapshot.monthly}</span>
+                        <span>mensuales</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <button type="button" onClick={() => void signOutUser()} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm">Sign out</button>
+              <button type="button" onClick={() => void signOutUser()} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm">Cerrar sesión</button>
             </>
           ) : (
-            <button type="button" onClick={() => void signInWithGoogle()} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm">Sign in</button>
+            <button type="button" onClick={() => void signInWithGoogle()} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm">Iniciar sesión</button>
           )}
         </nav>
       </header>
@@ -393,76 +529,60 @@ export default function HomePage() {
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
         <section className="space-y-5">
           {/* Campo 1 — Título del vídeo (opcional) */}
-          <Panel title="Título del vídeo" subtitle="opcional">
+          <Panel title="Título del vídeo" subtitle="opcional — pero ayuda mucho a crear el gancho">
             <input
               type="text"
               value={videoTitle}
               maxLength={200}
               onChange={(e) => setVideoTitle(e.target.value)}
-              placeholder="¿Cuál es el título de tu vídeo? (opcional)"
+              placeholder="¿Cuál es el título de tu vídeo? (la IA lo usa para el gancho)"
               className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm"
             />
           </Panel>
 
-          {/* Campo 2 — Contenido (obligatorio, personal) */}
-          <Panel title="Contenido" subtitle="qué aparece en tu miniatura — personal, no se comparte">
+          {/* Campo 2 — Contenido (obligatorio) */}
+          <Panel title="Contenido" subtitle="Elementos de la miniatura">
             <textarea
+              ref={contentRef}
               value={params.prompt}
               maxLength={2000}
               onChange={(e) => setParams({ ...params, prompt: e.target.value })}
-              placeholder="Describe qué quieres en tu miniatura (tu vídeo, el tema, los elementos)..."
+              placeholder="Describe qué aparece en la miniatura y de qué va tu vídeo (el tema, los elementos, el momento clave)..."
               rows={5}
-              className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm"
+              className="min-h-[7rem] w-full resize-y rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm"
             />
-          </Panel>
-
-          {/* Campo 3 — Imagen de referencia (opcional) */}
-          <Panel title="Imagen de referencia" subtitle={`opcional · ${referenceImages.length}/${MAX_REFERENCE_IMAGES} · ${formatBytes(totalReferenceBytes)}`}>
-            <div className={`rounded-md border border-dashed px-4 py-5 text-center ${isDragging ? "border-[var(--color-accent)]" : "border-[var(--color-border-strong)]"}`} onDrop={(e: DragEvent<HTMLDivElement>) => { e.preventDefault(); setIsDragging(false); void addReferenceFiles(e.dataTransfer.files); }} onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }} onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}>
-              <button type="button" className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm" onClick={() => fileInputRef.current?.click()}>Subir imagen</button>
-              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e: ChangeEvent<HTMLInputElement>) => { if (e.target.files?.length) void addReferenceFiles(e.target.files); e.target.value = ""; }} />
-            </div>
-            {referenceError && <p className="mt-2 text-xs text-[var(--color-danger)]">{referenceError}</p>}
             {referenceImages.length > 0 && (
-              <div className="mt-3 space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  {referenceImages.map((ref) => (
-                    <div key={ref.id} className="relative">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={ref.previewUrl} alt={ref.filename} className="h-16 w-16 rounded-md border border-[var(--color-border)] object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => setReferenceImages((prev) => prev.filter((x) => x.id !== ref.id))}
-                        className="absolute -right-1.5 -top-1.5 rounded-full border border-[var(--color-border-strong)] bg-[var(--color-bg-panel)] px-1.5 text-xs"
-                        aria-label="Eliminar imagen"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <textarea
-                  value={referenceInstructions}
-                  maxLength={500}
-                  onChange={(e) => setReferenceInstructions(e.target.value)}
-                  placeholder="Instrucciones sobre esta imagen (ej: 'quiero esta cara pero sorprendida')"
-                  rows={2}
-                  className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2 text-sm"
-                />
-              </div>
+              <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+                Tip: usa <span className="font-medium text-[var(--color-text-secondary)]">[Imagen 1]</span>, <span className="font-medium text-[var(--color-text-secondary)]">[Imagen 2]</span>… para referirte a tus imágenes de referencia.
+              </p>
             )}
           </Panel>
 
-          {/* Campo 4 — Estilo (texto copiable / compartible) */}
-          <Panel title="Estilo" subtitle="el look de la miniatura — esto es lo que se comparte y otros pueden copiar">
+          {/* Campo 3 — Estilo (texto copiable / compartible) */}
+          <Panel title="Estilo" subtitle="Estilo de la miniatura">
             <textarea
               value={styleText}
               maxLength={1500}
               onChange={(e) => setStyleText(e.target.value)}
               placeholder="Describe el estilo visual: colores, iluminación, composición, tipografía, ambiente..."
               rows={4}
-              className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm"
+              className="min-h-[6rem] w-full resize-y rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm"
             />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void suggestStyle()}
+                disabled={suggestingStyle || !(videoTitle.trim() || params.prompt.trim())}
+                title="La IA propone un estilo según tu título y contenido"
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-strong)] transition hover:border-[var(--color-accent)] disabled:opacity-50"
+              >
+                {suggestingStyle ? "Pensando un estilo…" : "✨ Sugerir estilo con IA (1 crédito)"}
+              </button>
+              {!(videoTitle.trim() || params.prompt.trim()) && (
+                <span className="text-xs text-[var(--color-text-muted)]">Rellena el título o el contenido primero</span>
+              )}
+            </div>
+            {suggestError && <p className="mt-1 text-xs text-[var(--color-danger)]">{suggestError}</p>}
             {styleSource.kind === "gallery" && styleText === styleSource.base && (
               <p className="mt-2 text-xs text-[var(--color-accent)]">Estilo cargado de la galería de la comunidad. Puedes editarlo.</p>
             )}
@@ -485,6 +605,69 @@ export default function HomePage() {
             </div>
           </Panel>
 
+          {/* Campo 4 — Imagen de referencia (opcional). Toda la sección es zona de
+              arrastre: el div externo captura el drop en cualquier punto del panel. */}
+          <div
+            onDragEnter={(e) => { e.preventDefault(); dragCounter.current += 1; setIsDragging(true); }}
+            onDragOver={(e) => e.preventDefault()}
+            onDragLeave={(e) => { e.preventDefault(); dragCounter.current -= 1; if (dragCounter.current <= 0) setIsDragging(false); }}
+            onDrop={(e: DragEvent<HTMLDivElement>) => { e.preventDefault(); dragCounter.current = 0; setIsDragging(false); void addReferenceFiles(e.dataTransfer.files); }}
+            className={`rounded-lg transition ${isDragging ? "ring-2 ring-[var(--color-accent)]" : ""}`}
+          >
+          <Panel title="Imagen de referencia" subtitle={`opcional · ${referenceImages.length}/${MAX_REFERENCE_IMAGES} · ${formatBytes(totalReferenceBytes)}`}>
+            <div className={`rounded-md border border-dashed px-4 py-6 text-center transition ${isDragging ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)]" : "border-[var(--color-border-strong)]"}`}>
+              <p className="mb-2 text-xs text-[var(--color-text-muted)]">Arrastra y suelta tus imágenes aquí, o</p>
+              <button type="button" className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm" onClick={() => fileInputRef.current?.click()}>Subir imagen</button>
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e: ChangeEvent<HTMLInputElement>) => { if (e.target.files?.length) void addReferenceFiles(e.target.files); e.target.value = ""; }} />
+            </div>
+            {referenceError && <p className="mt-2 text-xs text-[var(--color-danger)]">{referenceError}</p>}
+            {referenceImages.length > 0 && (
+              <div className="mt-3 space-y-3">
+                {referenceImages.map((ref, i) => {
+                  const label = `Imagen ${i + 1}`;
+                  return (
+                    <div key={ref.id} className="flex gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2.5">
+                      <div className="relative shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={ref.previewUrl} alt={ref.filename} className="h-16 w-16 rounded-md border border-[var(--color-border)] object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setReferenceImages((prev) => prev.filter((x) => x.id !== ref.id))}
+                          className="absolute -right-1.5 -top-1.5 rounded-full border border-[var(--color-border-strong)] bg-[var(--color-bg-panel)] px-1.5 text-xs"
+                          aria-label={`Eliminar ${label}`}
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1.5 flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-[var(--color-text-secondary)]">{label}</span>
+                          <button
+                            type="button"
+                            onClick={() => insertRefToken(label)}
+                            title="Insertar referencia en el Contenido"
+                            className="rounded-md border border-[var(--color-border-strong)] px-2 py-0.5 text-xs transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                          >
+                            Insertar en contenido
+                          </button>
+                        </div>
+                        <textarea
+                          value={ref.instructions}
+                          maxLength={500}
+                          onChange={(e) => setRefInstruction(ref.id, e.target.value)}
+                          placeholder="Instrucciones para esta imagen (ej: 'quiero esta cara pero sorprendida')"
+                          rows={2}
+                          className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel)] px-3 py-2 text-sm"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Panel>
+          </div>
+
           {/* Campo 5 — Opciones (solo PRO) */}
           <Panel title="Opciones">
             {isFreePlan ? (
@@ -498,21 +681,21 @@ export default function HomePage() {
                     Ahorro
                     <input type="checkbox" checked={saver} onChange={(e) => setSaver(e.target.checked)} />
                   </span>
-                  <span className="mt-1 block text-xs text-[var(--color-text-muted)]">Genera en cola cuando hay disponibilidad; puede tardar más. −25 créditos.</span>
+                  <span className="mt-1 block text-xs text-[var(--color-text-muted)]">Generación de baja prioridad cuando sea disponible <br /> -25 créditos al coste de generación</span>
                 </label>
                 <label className="block">
                   <span className="flex items-center justify-between text-sm">
                     Alta calidad
                     <input type="checkbox" checked={highQuality} onChange={(e) => setHighQuality(e.target.checked)} />
                   </span>
-                  <span className="mt-1 block text-xs text-[var(--color-text-muted)]">Más detalle nativo, sobre todo para la letra pequeña. +25 créditos.</span>
+                  <span className="mt-1 block text-xs text-[var(--color-text-muted)]">Más detalle nativo, recomendado para generar letra pequeña <br /> +25 créditos al coste de generación</span>
                 </label>
                 <label className="block">
                   <span className="flex items-center justify-between text-sm">
                     Alta resolución
                     <input type="checkbox" checked={highRes} onChange={(e) => setHighRes(e.target.checked)} />
                   </span>
-                  <span className="mt-1 block text-xs text-[var(--color-text-muted)]">Resultado final más grande (2K). +25 créditos.</span>
+                  <span className="mt-1 block text-xs text-[var(--color-text-muted)]">Resolución de imagen a 2K <br /> +25 créditos al coste de generación</span>
                 </label>
               </div>
             )}
@@ -523,7 +706,7 @@ export default function HomePage() {
               ? "Generando..."
               : insufficientCredits
                 ? "Créditos insuficientes"
-                : `Generar (${creditsCost} créditos${creditSnapshot ? ` · saldo D ${creditSnapshot.daily} M ${creditSnapshot.monthly}` : ""})`}
+                : `Generar · ${creditsCost} créditos`}
           </button>
 
           {generationError && <div className="rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-3 text-xs">{generationError}</div>}
@@ -546,7 +729,7 @@ export default function HomePage() {
 }
 
 function Panel({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
-  return <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-4"><header className="mb-3 flex items-baseline justify-between"><h2 className="text-sm font-semibold tracking-tight">{title}</h2>{subtitle && <span className="text-xs text-[var(--color-text-muted)]">{subtitle}</span>}</header>{children}</div>;
+  return <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-4"><header className="mb-3 flex items-baseline justify-between gap-3"><h2 className="shrink-0 text-sm font-semibold tracking-tight">{title}</h2>{subtitle && <span className="text-right text-xs leading-snug text-[var(--color-text-muted)]">{subtitle}</span>}</header>{children}</div>;
 }
 
 function PublishControls({
@@ -592,28 +775,23 @@ function PublishControls({
   };
 
   return (
-    <div className="mt-4 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-3 text-xs">
-      {!confirming ? (
-        <button
-          type="button"
-          onClick={() => setConfirming(true)}
-          className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 hover:border-[var(--color-accent)]"
-        >
-          Publicar en la galería de MiniAItura
-        </button>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-[var(--color-text-secondary)]">
-            Acepto publicar mi miniatura en la galería pública de MiniAItura. Si el estilo es propio (custom),
-            otras personas podrán usar tu prompt de estilo como referencia.
-          </p>
-          <div className="flex gap-2">
-            <button type="button" disabled={busy} onClick={() => setConfirming(false)} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 disabled:opacity-50">Cancelar</button>
-            <button type="button" disabled={busy} onClick={() => void publish()} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 font-semibold text-white disabled:opacity-50">{busy ? "Publicando…" : "Publicar"}</button>
-          </div>
-        </div>
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-bg-panel-2)] px-4 py-2.5 text-sm font-medium transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+      >
+        <span aria-hidden>🌐</span>
+        Publicar en la galería de la comunidad
+      </button>
+      {confirming && (
+        <PublishConfirmModal
+          busy={busy}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => void publish()}
+        />
       )}
-      {publishMsg && <p className="mt-2 text-[var(--color-text-muted)]">{publishMsg}</p>}
+      {publishMsg && <p className="mt-2 text-xs text-[var(--color-text-muted)]">{publishMsg}</p>}
     </div>
   );
 }
@@ -635,6 +813,8 @@ function ResultPanel({
   publishMsg: string | null;
   onPublishMsg: (m: string | null) => void;
 }) {
+  const [zoomed, setZoomed] = useState<number | null>(null);
+
   if (generating) {
     return (
       <Panel title="Resultado">
@@ -662,9 +842,17 @@ function ResultPanel({
             <img
               src={`data:${img.mimeType};base64,${img.data}`}
               alt={`Generated thumbnail ${i + 1}`}
-              className="block w-full"
+              onClick={() => setZoomed(i)}
+              className="block w-full cursor-zoom-in transition hover:opacity-95"
             />
-            <figcaption className="flex items-center justify-end border-t border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2 text-xs">
+            <figcaption className="flex items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setZoomed(i)}
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
+              >
+                Ampliar
+              </button>
               <a
                 href={`data:${img.mimeType};base64,${img.data}`}
                 download={`miniaitura-${result.requestId}-${i + 1}.png`}
@@ -679,7 +867,116 @@ function ResultPanel({
       {isPro && (
         <PublishControls result={result} authToken={authToken} publishMsg={publishMsg} onPublishMsg={onPublishMsg} />
       )}
+      {zoomed !== null && (
+        <ResultLightbox
+          images={result.images}
+          index={zoomed}
+          requestId={result.requestId}
+          onClose={() => setZoomed(null)}
+        />
+      )}
     </Panel>
+  );
+}
+
+// Visor a pantalla completa del resultado (mismo patrón que "Mi galería"):
+// overlay oscuro + imagen grande (object-contain) + descarga. Portal a <body>
+// para cubrir todo el viewport con independencia de ancestros con transform.
+function ResultLightbox({
+  images,
+  index,
+  requestId,
+  onClose,
+}: {
+  images: GenerateResponse["images"];
+  index: number;
+  requestId: string;
+  onClose: () => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+  const [current, setCurrent] = useState(index);
+  const total = images.length;
+
+  useEffect(() => {
+    setMounted(true);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowRight") setCurrent((c) => (c + 1) % total);
+      if (e.key === "ArrowLeft") setCurrent((c) => (c - 1 + total) % total);
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose, total]);
+
+  if (!mounted) return null;
+
+  const img = images[current];
+  const src = `data:${img.mimeType};base64,${img.data}`;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="relative flex max-h-full w-full max-w-5xl flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between pb-3">
+          <span className="text-sm font-medium text-white/80">
+            {total > 1 ? `Imagen ${current + 1} de ${total}` : "Resultado"}
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="rounded-md border border-white/30 px-3 py-1 text-sm text-white transition hover:bg-white/10"
+          >
+            Cerrar
+          </button>
+        </div>
+
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={`Resultado ${current + 1}`}
+          className="mx-auto max-h-[78vh] w-auto max-w-full rounded-lg border border-white/10 object-contain"
+        />
+
+        <div className="flex items-center justify-center gap-3 pt-4">
+          {total > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setCurrent((c) => (c - 1 + total) % total)}
+                className="rounded-md border border-white/30 px-3 py-1.5 text-sm text-white transition hover:bg-white/10"
+              >
+                ‹ Anterior
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrent((c) => (c + 1) % total)}
+                className="rounded-md border border-white/30 px-3 py-1.5 text-sm text-white transition hover:bg-white/10"
+              >
+                Siguiente ›
+              </button>
+            </>
+          )}
+          <a
+            href={src}
+            download={`miniaitura-${requestId}-${current + 1}.png`}
+            className="rounded-md bg-[var(--color-accent)] px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-[var(--color-accent-strong)]"
+          >
+            Descargar
+          </a>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

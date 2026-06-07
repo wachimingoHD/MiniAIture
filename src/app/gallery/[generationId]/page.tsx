@@ -11,7 +11,7 @@ import { notFound } from "next/navigation";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
 import { getGenerationById, type GenerationWithId } from "@/lib/firestore/generations";
 import { generateAltText } from "@/lib/seo";
-import UseStyleButton from "./use-style-button";
+import UseInGenerator from "./use-in-generator";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -122,19 +122,31 @@ export default async function GenerationDetailPage({
         <aside className="space-y-4 text-sm">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">{shortText(gen.userPrompt, 80)}</h1>
-            {isCustom && (
-              <p className="mt-1 text-[var(--color-text-muted)]">Estilo por: @{authorName}</p>
-            )}
+            <p className="mt-1 text-[var(--color-text-muted)]">Por @{authorName}</p>
           </div>
 
-          {isCustom && gen.stylePrompt && (
+          {/* Contenido (qué aparece en la miniatura) */}
+          {gen.userPrompt && (
             <div>
-              <p className="mb-1 font-medium text-[var(--color-text-primary)]">Prompt de estilo</p>
-              <p className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2 text-[var(--color-text-secondary)]">
+              <p className="mb-1 font-medium text-[var(--color-text-primary)]">Contenido</p>
+              <p className="whitespace-pre-wrap rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2 text-[var(--color-text-secondary)]">
+                {gen.userPrompt}
+              </p>
+            </div>
+          )}
+
+          {/* Estilo (el look) */}
+          {gen.stylePrompt && (
+            <div>
+              <p className="mb-1 font-medium text-[var(--color-text-primary)]">Estilo</p>
+              <p className="whitespace-pre-wrap rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2 text-[var(--color-text-secondary)]">
                 {gen.stylePrompt}
               </p>
             </div>
           )}
+
+          {/* Usar contenido / estilo / ambos en el generador (precarga el form) */}
+          <UseInGenerator generationId={gen.id} content={gen.userPrompt} style={gen.stylePrompt || null} />
 
           {gen.nicho && (
             <p className="text-[var(--color-text-muted)]">Nicho: {gen.nicho}</p>
@@ -143,8 +155,6 @@ export default async function GenerationDetailPage({
           <p className="text-[var(--color-text-muted)]">
             Este estilo ha sido usado {gen.timesStyleCopied} veces
           </p>
-
-          {isCustom && <UseStyleButton generationId={gen.id} />}
         </aside>
       </article>
     </main>

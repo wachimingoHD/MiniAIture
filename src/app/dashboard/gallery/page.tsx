@@ -8,6 +8,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import MascotEmpty from "@/components/mascots/MascotEmpty";
+import PublishConfirmModal from "@/components/ui/PublishConfirmModal";
+import PageHeader from "@/components/ui/PageHeader";
 import { signInWithGoogle, signOutUser, subscribeToAuthState } from "@/lib/auth/firebase-client";
 
 interface GenerationItem {
@@ -46,6 +48,8 @@ export default function PersonalGalleryPage() {
   const [selected, setSelected] = useState<GenerationItem | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  // Confirmación con aviso antes de publicar (no hace falta para hacer privada).
+  const [confirmPublish, setConfirmPublish] = useState(false);
 
   useEffect(() => {
     const unsubscribe = subscribeToAuthState(async (user) => {
@@ -108,6 +112,7 @@ export default function PersonalGalleryPage() {
         return;
       }
       patchItem(item.id, { isPublic: !item.isPublic });
+      setConfirmPublish(false);
       setActionMsg(item.isPublic ? "Miniatura hecha privada." : "Publicada en la galería pública.");
     } catch (err) {
       setActionMsg((err as Error).message);
@@ -163,16 +168,11 @@ export default function PersonalGalleryPage() {
 
   return (
     <main className="mx-auto max-w-[1200px] px-4 py-8 md:px-8 md:py-12">
-      <header className="flex items-center justify-between border-b border-[var(--color-border)] pb-5">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Mi galería</h1>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">Tus miniaturas generadas.</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link href="/" className="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]">App</Link>
-          <Link href="/gallery" className="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]">Comunidad</Link>
-        </div>
-      </header>
+      <PageHeader subtitle="Tu galería" />
+      <div className="mt-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Mi galería</h1>
+        <p className="mt-1 text-sm text-[var(--color-text-muted)]">Tus miniaturas generadas.</p>
+      </div>
 
       <section className="mt-6 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-4">
         {authEmail ? (
@@ -254,6 +254,7 @@ export default function PersonalGalleryPage() {
                 onClick={() => {
                   setSelected(image);
                   setActionMsg(null);
+                  setConfirmPublish(false);
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -293,8 +294,8 @@ export default function PersonalGalleryPage() {
       )}
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setSelected(null)}>
-          <div className="w-full max-w-5xl rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-4" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-3 sm:items-center sm:p-4" onClick={() => setSelected(null)}>
+          <div className="my-auto w-full max-w-5xl rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">Detalle</h2>
               <button type="button" onClick={() => setSelected(null)} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1 text-sm">Cerrar</button>
@@ -339,7 +340,13 @@ export default function PersonalGalleryPage() {
                   <button
                     type="button"
                     disabled={actionBusy}
-                    onClick={() => void togglePublish(selected)}
+                    onClick={() => {
+                      if (selected.isPublic) {
+                        void togglePublish(selected);
+                      } else {
+                        setConfirmPublish(true);
+                      }
+                    }}
                     className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 hover:border-[var(--color-accent)] disabled:opacity-50"
                   >
                     {selected.isPublic ? "Hacer privada" : "Publicar"}
@@ -353,7 +360,15 @@ export default function PersonalGalleryPage() {
                     Borrar
                   </button>
                 </div>
-                {!selected.isPublic && (
+
+                {confirmPublish && !selected.isPublic && (
+                  <PublishConfirmModal
+                    busy={actionBusy}
+                    onCancel={() => setConfirmPublish(false)}
+                    onConfirm={() => void togglePublish(selected)}
+                  />
+                )}
+                {!selected.isPublic && !confirmPublish && (
                   <p className="text-[11px] text-[var(--color-text-muted)]">Publicar requiere plan Pro.</p>
                 )}
                 {actionMsg && <p className="text-xs text-[var(--color-text-secondary)]">{actionMsg}</p>}

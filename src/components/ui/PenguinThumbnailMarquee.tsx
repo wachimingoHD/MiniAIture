@@ -14,6 +14,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 export interface MarqueeThumb {
   id: string;
@@ -167,7 +168,11 @@ function fillTo(items: MarqueeThumb[], min: number): MarqueeThumb[] {
 }
 
 function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => void }) {
+  // Solo montamos el portal en cliente (document no existe en SSR).
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
+    setMounted(true);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -180,10 +185,16 @@ function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => vo
     };
   }, [onClose]);
 
-  return (
+  if (!mounted) return null;
+
+  // Portal a <body>: el marquee vive dentro de una sección con `transform`
+  // (.on-scroll-rise → @keyframes rise-in), lo que convierte a esa sección en el
+  // bloque contenedor de cualquier `position: fixed` descendiente. Sin el portal,
+  // el overlay sólo cubría la banda del slider en vez de todo el viewport.
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={onClose} aria-hidden />
-      <div className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-panel)] shadow-2xl">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <div className="relative z-10 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-panel)] shadow-2xl">
         <button
           type="button"
           onClick={onClose}
@@ -228,7 +239,8 @@ function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => vo
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

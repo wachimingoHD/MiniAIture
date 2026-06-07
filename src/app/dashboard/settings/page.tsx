@@ -5,6 +5,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import PageHeader from "@/components/ui/PageHeader";
 import { signInWithGoogle, signOutUser, subscribeToAuthState } from "@/lib/auth/firebase-client";
 
 interface Credits {
@@ -135,10 +136,10 @@ export default function SettingsPage() {
 
   return (
     <main className="mx-auto max-w-[680px] px-4 py-8 md:px-8 md:py-12">
-      <header className="flex items-center justify-between border-b border-[var(--color-border)] pb-5">
+      <PageHeader subtitle="Tu perfil" />
+      <div className="mt-6">
         <h1 className="text-2xl font-semibold tracking-tight">Tu perfil</h1>
-        <Link href="/dashboard/gallery" className="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]">Tu galería</Link>
-      </header>
+      </div>
 
       {loading ? (
         <p className="mt-6 text-sm text-[var(--color-text-muted)]">Cargando…</p>

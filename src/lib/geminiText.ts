@@ -8,7 +8,7 @@
 // El modelo es configurable vía GEMINI_TEXT_MODEL.
 // =============================================================================
 
-export const DEFAULT_GEMINI_TEXT_MODEL = "gemini-2.5-flash";
+export const DEFAULT_GEMINI_TEXT_MODEL = "gemini-3.5-flash";
 
 export interface GeminiTextPart {
   text?: string;

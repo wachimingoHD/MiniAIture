@@ -119,13 +119,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let userPromptForRecord = params.prompt;
   if (enhancerFields) {
     userPromptForRecord = enhancerFields.userPrompt;
-    const firstRef = referenceImages[0];
+    // Pasamos TODAS las imágenes etiquetadas "Imagen N" en el mismo orden en que
+    // se envían al generador de imágenes, para que el enhancer pueda casar cada
+    // [Imagen N] citada en el contenido con su imagen real.
+    const enhancerReferenceImages = referenceImages.map((ref, i) => ({
+      data: ref.data,
+      mimeType: ref.mimeType,
+      label: `Imagen ${i + 1}`,
+    }));
     const enhanced = await enhancePrompt(
       {
         videoTitle: enhancerFields.videoTitle,
         userPrompt: enhancerFields.userPrompt,
-        referenceImageBase64: firstRef?.data ?? null,
-        referenceImageMimeType: firstRef?.mimeType ?? null,
+        referenceImages: enhancerReferenceImages,
         referenceInstructions: enhancerFields.referenceInstructions,
         stylePrompt: enhancerFields.stylePrompt,
       },

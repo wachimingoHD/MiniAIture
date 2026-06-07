@@ -148,6 +148,9 @@ export async function runGoogleGeneration(
     let producedImage = false;
     for (const part of parts) {
       if (part.inlineData?.data && part.inlineData.mimeType?.startsWith("image/")) {
+        // El modelo ya generó (y nos facturó) cada imagen que devuelve, así que
+        // las mostramos todas: si vienen 2 en una respuesta, son valor "gratis"
+        // para el usuario que ya hemos pagado. NO descartar.
         images.push({
           data: part.inlineData.data,
           mimeType: part.inlineData.mimeType,

@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import PageHeader from "@/components/ui/PageHeader";
 import {
   getCurrentIdToken,
   signInWithGoogle,
@@ -84,22 +84,13 @@ export default function PricingPage() {
 
   return (
     <main className="mx-auto max-w-[980px] px-4 py-8 md:px-8 md:py-12">
-      <header className="flex items-center justify-between border-b border-[var(--color-border)] pb-5">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Planes y precios</h1>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            Elige el plan que mejor encaja con tu ritmo de creación de miniaturas.
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link href="/" className="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]">
-            Back to app
-          </Link>
-          <Link href="/gallery" className="text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]">
-            Gallery
-          </Link>
-        </div>
-      </header>
+      <PageHeader subtitle="Planes y precios" />
+      <div className="mt-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Planes y precios</h1>
+        <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+          Elige el plan que mejor encaja con tu ritmo de creación de miniaturas.
+        </p>
+      </div>
 
       <section className="mt-6 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-4">
         {authEmail ? (
