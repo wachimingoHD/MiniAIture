@@ -33,12 +33,12 @@ describe("buildUserMessage (doc §3.2)", () => {
     const msg = buildUserMessage({
       ...base,
       referenceImages: [
-        { data: "aaa", mimeType: "image/png", label: "Imagen 1" },
-        { data: "bbb", mimeType: "image/png", label: "Imagen 2" },
+        { data: "aaa", mimeType: "image/png", label: "Image 1" },
+        { data: "bbb", mimeType: "image/png", label: "Image 2" },
       ],
-      referenceInstructions: "Imagen 2: está fumando muy fuerte",
+      referenceInstructions: "Image 2: está fumando muy fuerte",
     });
-    expect(msg).toContain("ATTACHED REFERENCE IMAGES (in this order): Imagen 1, Imagen 2");
+    expect(msg).toContain("ATTACHED REFERENCE IMAGES (in this order): Image 1, Image 2");
     expect(msg).toContain("the subject from reference image N");
     expect(msg).toContain("PER-IMAGE INSTRUCTIONS:");
   });
@@ -49,11 +49,17 @@ describe("buildUserMessage (doc §3.2)", () => {
 });
 
 describe("normalizeImageCitations", () => {
-  it("convierte [Imagen N] en 'reference image N' (case/espacios flexibles)", () => {
-    expect(normalizeImageCitations("[Imagen 1] trollea a [imagen 2]")).toBe(
+  it("convierte [Image N] en 'reference image N' (case/espacios flexibles)", () => {
+    expect(normalizeImageCitations("[Image 1] trollea a [image 2]")).toBe(
       "reference image 1 trollea a reference image 2",
     );
-    expect(normalizeImageCitations("[ Imagen  3 ]")).toBe("reference image 3");
+    expect(normalizeImageCitations("[ Image  3 ]")).toBe("reference image 3");
+  });
+
+  it("también acepta el token legacy en español [Imagen N]", () => {
+    expect(normalizeImageCitations("[Imagen 1] y [imagen 2]")).toBe(
+      "reference image 1 y reference image 2",
+    );
   });
 
   it("no toca texto sin citas", () => {
@@ -65,15 +71,15 @@ describe("buildFallbackPrompt con imágenes citadas", () => {
   it("normaliza las citas y declara las imágenes como sujetos", () => {
     const out = buildFallbackPrompt({
       ...base,
-      userPrompt: "[Imagen 1] trollea a [Imagen 2]",
+      userPrompt: "[Image 1] trollea a [Image 2]",
       referenceImages: [
-        { data: "a", mimeType: "image/png", label: "Imagen 1" },
-        { data: "b", mimeType: "image/png", label: "Imagen 2" },
+        { data: "a", mimeType: "image/png", label: "Image 1" },
+        { data: "b", mimeType: "image/png", label: "Image 2" },
       ],
     });
     expect(out).toContain("reference image 1 trollea a reference image 2");
     expect(out).toContain("as the actual subjects");
-    expect(out).not.toContain("[Imagen");
+    expect(out).not.toContain("[Image");
   });
 });
 

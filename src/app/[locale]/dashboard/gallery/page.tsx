@@ -5,8 +5,9 @@
 // - PRO: paginación por cursor ("Cargar más").
 // - Click en miniatura -> vista expandida con detalles.
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
 import MascotEmpty from "@/components/mascots/MascotEmpty";
 import PublishConfirmModal from "@/components/ui/PublishConfirmModal";
 import PageHeader from "@/components/ui/PageHeader";
@@ -36,6 +37,8 @@ interface GalleryResponse {
 }
 
 export default function PersonalGalleryPage() {
+  const t = useTranslations("galleryPersonal");
+  const tAuth = useTranslations("auth");
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [plan, setPlan] = useState<"free" | "pro" | null>(null);
@@ -77,7 +80,7 @@ export default function PersonalGalleryPage() {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${authToken}` } });
       const payload = (await res.json()) as GalleryResponse;
       if (!res.ok) {
-        setError(payload.error ?? "No se pudo cargar la galería.");
+        setError(payload.error ?? t("loadFailed"));
         return;
       }
       setPlan(payload.plan ?? null);
@@ -108,12 +111,12 @@ export default function PersonalGalleryPage() {
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        setActionMsg(data.error ?? "No se pudo cambiar la visibilidad.");
+        setActionMsg(data.error ?? t("visibilityFailed"));
         return;
       }
       patchItem(item.id, { isPublic: !item.isPublic });
       setConfirmPublish(false);
-      setActionMsg(item.isPublic ? "Miniatura hecha privada." : "Publicada en la galería pública.");
+      setActionMsg(item.isPublic ? t("madePrivate") : t("madePublic"));
     } catch (err) {
       setActionMsg((err as Error).message);
     } finally {
@@ -144,7 +147,7 @@ export default function PersonalGalleryPage() {
 
   async function removeItem(item: GenerationItem): Promise<void> {
     if (!token) return;
-    if (!window.confirm("¿Borrar esta miniatura? No se puede deshacer.")) return;
+    if (!window.confirm(t("deleteConfirm"))) return;
     setActionBusy(true);
     setActionMsg(null);
     try {
@@ -154,7 +157,7 @@ export default function PersonalGalleryPage() {
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        setActionMsg(data.error ?? "No se pudo borrar.");
+        setActionMsg(data.error ?? t("deleteFailed"));
         return;
       }
       setImages((prev) => prev.filter((it) => it.id !== item.id));
@@ -168,10 +171,10 @@ export default function PersonalGalleryPage() {
 
   return (
     <main className="mx-auto max-w-[1200px] px-4 py-8 md:px-8 md:py-12">
-      <PageHeader subtitle="Tu galería" />
+      <PageHeader subtitle={t("headerSubtitle")} />
       <div className="mt-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Mi galería</h1>
-        <p className="mt-1 text-sm text-[var(--color-text-muted)]">Tus miniaturas generadas.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+        <p className="mt-1 text-sm text-[var(--color-text-muted)]">{t("subtitle")}</p>
       </div>
 
       <section className="mt-6 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-4">
@@ -179,7 +182,7 @@ export default function PersonalGalleryPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm">{authEmail}</p>
-              <p className="text-xs text-[var(--color-text-muted)]">Plan: {plan ? plan.toUpperCase() : "—"}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">{t("planLabel", { plan: plan ? plan.toUpperCase() : "—" })}</p>
             </div>
             <button
               type="button"
@@ -196,12 +199,12 @@ export default function PersonalGalleryPage() {
               }}
               className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm hover:border-[var(--color-accent)] disabled:opacity-50"
             >
-              Cerrar sesión
+              {tAuth("signOut")}
             </button>
           </div>
         ) : (
           <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-[var(--color-text-muted)]">Inicia sesión para ver tu galería.</p>
+            <p className="text-sm text-[var(--color-text-muted)]">{t("signInToView")}</p>
             <button
               type="button"
               disabled={busy}
@@ -222,28 +225,28 @@ export default function PersonalGalleryPage() {
               }}
               className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm hover:border-[var(--color-accent)] disabled:opacity-50"
             >
-              Iniciar sesión
+              {tAuth("signIn")}
             </button>
           </div>
         )}
       </section>
 
       {loading ? (
-        <p className="mt-6 text-sm text-[var(--color-text-muted)]">Cargando galería…</p>
+        <p className="mt-6 text-sm text-[var(--color-text-muted)]">{t("loading")}</p>
       ) : error ? (
         <div className="mt-6 rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-3 text-sm">
-          <strong className="text-[var(--color-danger)]">Error:</strong> {error}
+          <strong className="text-[var(--color-danger)]">{t("errorLabel")}</strong> {error}
         </div>
       ) : images.length === 0 ? (
         <div className="mt-6 flex flex-col items-center gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-8 text-center">
           <MascotEmpty />
-          <p className="text-sm text-[var(--color-text-muted)]">Aún no tienes miniaturas. Genera una y aparecerá aquí.</p>
+          <p className="text-sm text-[var(--color-text-muted)]">{t("empty")}</p>
         </div>
       ) : (
         <>
           {limited && (
             <p className="mt-6 text-xs text-[var(--color-text-muted)]">
-              Plan FREE: se muestran tus últimas 30 miniaturas. Pásate a PRO para verlas todas.
+              {t("freeLimit")}
             </p>
           )}
           <section className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -264,7 +267,7 @@ export default function PersonalGalleryPage() {
                   <p className="text-[11px] text-[var(--color-text-muted)]">
                     {new Date(image.createdAt).toLocaleString()}
                     {image.nicho ? ` · ${image.nicho}` : ""}
-                    {image.isPublic ? " · público" : ""}
+                    {image.isPublic ? ` · ${t("publicTag")}` : ""}
                   </p>
                 </div>
               </article>
@@ -286,7 +289,7 @@ export default function PersonalGalleryPage() {
                 }}
                 className="rounded-md border border-[var(--color-border-strong)] px-4 py-2 text-sm hover:border-[var(--color-accent)] disabled:opacity-50"
               >
-                Cargar más
+                {t("loadMore")}
               </button>
             </div>
           )}
@@ -297,34 +300,34 @@ export default function PersonalGalleryPage() {
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-3 sm:items-center sm:p-4" onClick={() => setSelected(null)}>
           <div className="my-auto w-full max-w-5xl rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Detalle</h2>
-              <button type="button" onClick={() => setSelected(null)} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1 text-sm">Cerrar</button>
+              <h2 className="text-lg font-semibold">{t("detail")}</h2>
+              <button type="button" onClick={() => setSelected(null)} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1 text-sm">{t("close")}</button>
             </div>
             <div className="mt-4 grid gap-4 lg:grid-cols-[2fr_1fr]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={selected.imageUrl} alt="Miniatura seleccionada" className="w-full rounded-md border border-[var(--color-border)]" />
+              <img src={selected.imageUrl} alt={t("selectedAlt")} className="w-full rounded-md border border-[var(--color-border)]" />
               <div className="space-y-3 text-sm">
                 <div>
-                  <p className="mb-1"><strong>Tu descripción</strong></p>
+                  <p className="mb-1"><strong>{t("yourDescription")}</strong></p>
                   <p className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2 text-[var(--color-text-secondary)]">{selected.userPrompt}</p>
                 </div>
                 {selected.stylePrompt && (
                   <div>
-                    <p className="mb-1"><strong>Estilo</strong></p>
+                    <p className="mb-1"><strong>{t("style")}</strong></p>
                     <p className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2 text-[var(--color-text-secondary)]">{selected.stylePrompt}</p>
                   </div>
                 )}
                 <p className="text-[var(--color-text-muted)]">
-                  <strong className="text-[var(--color-text-primary)]">Visibilidad:</strong>{" "}
+                  <strong className="text-[var(--color-text-primary)]">{t("visibility")}</strong>{" "}
                   {selected.isPublic ? (
                     <>
-                      pública ·{" "}
+                      {t("public")} ·{" "}
                       <Link href={`/gallery/${selected.id}`} className="text-[var(--color-accent)] hover:underline">
-                        ver en la galería
+                        {t("viewInGallery")}
                       </Link>
                     </>
                   ) : (
-                    "privada"
+                    t("private")
                   )}
                 </p>
 
@@ -335,7 +338,7 @@ export default function PersonalGalleryPage() {
                     onClick={() => void downloadImage(selected)}
                     className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 font-semibold text-white hover:bg-[var(--color-accent-strong)] disabled:opacity-50"
                   >
-                    Descargar
+                    {t("download")}
                   </button>
                   <button
                     type="button"
@@ -349,7 +352,7 @@ export default function PersonalGalleryPage() {
                     }}
                     className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 hover:border-[var(--color-accent)] disabled:opacity-50"
                   >
-                    {selected.isPublic ? "Hacer privada" : "Publicar"}
+                    {selected.isPublic ? t("makePrivate") : t("publish")}
                   </button>
                   <button
                     type="button"
@@ -357,7 +360,7 @@ export default function PersonalGalleryPage() {
                     onClick={() => void removeItem(selected)}
                     className="rounded-md border border-[var(--color-danger)]/50 px-3 py-1.5 text-[var(--color-danger)] hover:border-[var(--color-danger)] disabled:opacity-50"
                   >
-                    Borrar
+                    {t("delete")}
                   </button>
                 </div>
 
@@ -369,10 +372,10 @@ export default function PersonalGalleryPage() {
                   />
                 )}
                 {!selected.isPublic && !confirmPublish && (
-                  <p className="text-[11px] text-[var(--color-text-muted)]">Publicar requiere plan Pro.</p>
+                  <p className="text-[11px] text-[var(--color-text-muted)]">{t("publishRequiresPro")}</p>
                 )}
                 {actionMsg && <p className="text-xs text-[var(--color-text-secondary)]">{actionMsg}</p>}
-                <a href={selected.imageUrl} target="_blank" rel="noreferrer" className="inline-block text-[var(--color-accent)] hover:underline">Abrir original</a>
+                <a href={selected.imageUrl} target="_blank" rel="noreferrer" className="inline-block text-[var(--color-accent)] hover:underline">{t("openOriginal")}</a>
               </div>
             </div>
           </div>

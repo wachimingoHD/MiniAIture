@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslations } from "next-intl";
 import PublishNotice from "./PublishNotice";
 
 export function PublishConfirmModal({
@@ -17,6 +18,7 @@ export function PublishConfirmModal({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const t = useTranslations("publishModal");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export function PublishConfirmModal({
         className="w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-3 font-display text-lg font-bold">Publicar en la comunidad</h3>
+        <h3 className="mb-3 font-display text-lg font-bold">{t("title")}</h3>
         <PublishNotice />
         <div className="mt-4 flex gap-2">
           <button
@@ -57,7 +59,7 @@ export function PublishConfirmModal({
             onClick={onCancel}
             className="flex-1 rounded-md border border-[var(--color-border-strong)] px-3 py-2 text-sm transition hover:border-[var(--color-accent)] disabled:opacity-50"
           >
-            Cancelar
+            {t("cancel")}
           </button>
           <button
             type="button"
@@ -65,7 +67,7 @@ export function PublishConfirmModal({
             onClick={onConfirm}
             className="flex-1 rounded-md bg-[var(--color-accent)] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[var(--color-accent-strong)] disabled:opacity-50"
           >
-            {busy ? "Publicando…" : "Publicar ahora"}
+            {busy ? t("publishing") : t("publishNow")}
           </button>
         </div>
       </div>

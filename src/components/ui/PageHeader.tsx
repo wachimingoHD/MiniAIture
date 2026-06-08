@@ -4,20 +4,22 @@
 // Unifica los headers ad-hoc que tenía cada página (enlaces sueltos tipo "App")
 // para que la navegación sea coherente, como en /generate.
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
+import { Link, usePathname } from "@/i18n/navigation";
 import { signInWithGoogle, signOutUser, subscribeToAuthState } from "@/lib/auth/firebase-client";
 
-const NAV: { href: string; label: string }[] = [
-  { href: "/generate", label: "Generar" },
-  { href: "/gallery", label: "Comunidad" },
-  { href: "/dashboard/gallery", label: "Mi galería" },
-  { href: "/pricing", label: "Precios" },
-  { href: "/dashboard/settings", label: "Ajustes" },
+const NAV: { href: string; key: string }[] = [
+  { href: "/generate", key: "generate" },
+  { href: "/gallery", key: "community" },
+  { href: "/dashboard/gallery", key: "myGallery" },
+  { href: "/pricing", key: "pricing" },
+  { href: "/dashboard/settings", key: "settings" },
 ];
 
 export function PageHeader({ subtitle }: { subtitle?: string }) {
+  const t = useTranslations("nav");
+  const tAuth = useTranslations("auth");
   const pathname = usePathname();
   const [email, setEmail] = useState<string | null>(null);
 
@@ -48,7 +50,7 @@ export function PageHeader({ subtitle }: { subtitle?: string }) {
                 : "hover:text-[var(--color-accent)]"
             }
           >
-            {item.label}
+            {t(item.key)}
           </Link>
         ))}
         {email ? (
@@ -61,7 +63,7 @@ export function PageHeader({ subtitle }: { subtitle?: string }) {
               onClick={() => void signOutUser()}
               className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm transition hover:border-[var(--color-accent)]"
             >
-              Cerrar sesión
+              {tAuth("signOut")}
             </button>
           </>
         ) : (
@@ -70,7 +72,7 @@ export function PageHeader({ subtitle }: { subtitle?: string }) {
             onClick={() => void signInWithGoogle()}
             className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm transition hover:border-[var(--color-accent)]"
           >
-            Iniciar sesión
+            {tAuth("signIn")}
           </button>
         )}
       </nav>

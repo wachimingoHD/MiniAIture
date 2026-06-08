@@ -10,10 +10,11 @@
 // lápiz (generar), estrella (tu galería), lupa (galería pública), ≡ (más info).
 // =============================================================================
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
+import { Link, usePathname } from "@/i18n/navigation";
 import { signInWithGoogle, subscribeToAuthState } from "@/lib/auth/firebase-client";
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
 
 type IconProps = { className?: string };
 function makeIcon(name: string, path: React.ReactNode) {
@@ -36,14 +37,15 @@ const Icon = {
   user: makeIcon("user", <><circle cx={12} cy={8} r={4} /><path d="M4 21a8 8 0 0116 0" /></>),
 };
 
-const NAV: { href: string; label: string; icon: keyof typeof Icon }[] = [
-  { href: "/", label: "Inicio", icon: "home" },
-  { href: "/generate", label: "Generar miniatura", icon: "pencil" },
-  { href: "/dashboard/gallery", label: "Tu galería", icon: "star" },
-  { href: "/gallery", label: "Galería pública", icon: "search" },
+const NAV: { href: string; labelKey: string; icon: keyof typeof Icon }[] = [
+  { href: "/", labelKey: "home", icon: "home" },
+  { href: "/generate", labelKey: "generate", icon: "pencil" },
+  { href: "/dashboard/gallery", labelKey: "yourGallery", icon: "star" },
+  { href: "/gallery", labelKey: "publicGallery", icon: "search" },
 ];
 
 export function Sidebar() {
+  const t = useTranslations("sidebar");
   const pathname = usePathname();
   const [expanded, setExpanded] = useState(false);
   const [photoURL, setPhotoURL] = useState<string | null>(null);
@@ -92,7 +94,7 @@ export function Sidebar() {
     <aside
       className="fixed inset-y-0 left-0 z-50 flex flex-col gap-1 border-r border-[var(--color-border)] bg-[var(--color-bg-panel)] py-3 shadow-[3px_0_22px_-16px_rgba(60,50,30,0.55)] transition-[width] duration-200 ease-out"
       style={{ width: expanded ? 216 : 64 }}
-      aria-label="Navegación principal"
+      aria-label={t("mainNav")}
     >
       {/* Toggle: a la derecha cuando está desplegado, centrado al colapsar. */}
       <div className={`flex px-3 ${expanded ? "justify-end" : "justify-center"}`}>
@@ -100,7 +102,7 @@ export function Sidebar() {
           type="button"
           onClick={toggle}
           className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-panel-2)] hover:text-[var(--color-text-primary)]"
-          aria-label={expanded ? "Colapsar menú" : "Expandir menú"}
+          aria-label={expanded ? t("collapse") : t("expand")}
           aria-expanded={expanded}
         >
           <Icon.chevron className={`h-5 w-5 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`} />
@@ -110,7 +112,7 @@ export function Sidebar() {
       {/* Perfil / login */}
       <div className="px-2.5 pt-1">
         {signedIn ? (
-          <Link href="/dashboard/settings" className={row(isActive("/dashboard/settings"))} title="Ajustes de tu cuenta">
+          <Link href="/dashboard/settings" className={row(isActive("/dashboard/settings"))} title={t("accountSettings")}>
             {photoURL ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -122,12 +124,12 @@ export function Sidebar() {
             ) : (
               <Icon.user className="h-7 w-7 shrink-0" />
             )}
-            {label("Tu cuenta")}
+            {label(t("account"))}
           </Link>
         ) : (
-          <button type="button" onClick={() => void signInWithGoogle()} className={`w-full ${row(false)}`} title="Iniciar sesión con Google">
+          <button type="button" onClick={() => void signInWithGoogle()} className={`w-full ${row(false)}`} title={t("signInGoogle")}>
             <Icon.user className="h-7 w-7 shrink-0" />
-            {label("Iniciar sesión")}
+            {label(t("signIn"))}
           </button>
         )}
       </div>
@@ -138,10 +140,11 @@ export function Sidebar() {
       <nav className="flex flex-1 flex-col gap-1 px-2.5">
         {NAV.map((item) => {
           const Ico = Icon[item.icon];
+          const text = t(item.labelKey);
           return (
-            <Link key={item.href} href={item.href} className={row(isActive(item.href))} title={item.label}>
+            <Link key={item.href} href={item.href} className={row(isActive(item.href))} title={text}>
               <Ico className="h-[22px] w-[22px] shrink-0" />
-              {label(item.label)}
+              {label(text)}
             </Link>
           );
         })}
@@ -149,10 +152,15 @@ export function Sidebar() {
 
       {/* Más info */}
       <div className="px-2.5">
-        <Link href="/pricing" className={row(isActive("/pricing"))} title="Más info">
+        <Link href="/pricing" className={row(isActive("/pricing"))} title={t("moreInfo")}>
           <Icon.menu className="h-[22px] w-[22px] shrink-0" />
-          {label("Más info")}
+          {label(t("moreInfo"))}
         </Link>
+      </div>
+
+      {/* Selector de idioma */}
+      <div className="mx-3 mt-2 border-t border-[var(--color-border)] pt-2">
+        <LanguageSwitcher expanded={expanded} />
       </div>
     </aside>
   );

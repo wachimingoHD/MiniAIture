@@ -12,9 +12,10 @@
 //   ancho de pantalla (no se ve el corte ni con zoom-out).
 // =============================================================================
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
 
 export interface MarqueeThumb {
   id: string;
@@ -72,6 +73,7 @@ function Carrier({
   stopped: boolean;
   onHover: (i: number | null) => void;
 }) {
+  const t = useTranslations("marquee");
   const variant = VARIANTS[index % VARIANTS.length];
   const clickable = !!item.imageUrl;
 
@@ -81,7 +83,7 @@ function Carrier({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={item.imageUrl}
-          alt={item.prompt?.slice(0, 80) ?? "Miniatura pública"}
+          alt={item.prompt?.slice(0, 80) ?? t("publicThumbAlt")}
           loading="lazy"
           className="h-full w-full object-cover"
         />
@@ -102,7 +104,7 @@ function Carrier({
           type="button"
           onClick={() => onSelect(item)}
           className="block w-full cursor-pointer"
-          aria-label={`Ver miniatura: ${item.prompt?.slice(0, 60) ?? ""}`}
+          aria-label={t("viewThumb", { title: item.prompt?.slice(0, 60) ?? "" })}
         >
           {thumb}
         </button>
@@ -168,6 +170,7 @@ function fillTo(items: MarqueeThumb[], min: number): MarqueeThumb[] {
 }
 
 function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => void }) {
+  const t = useTranslations("marquee");
   // Solo montamos el portal en cliente (document no existe en SSR).
   const [mounted, setMounted] = useState(false);
 
@@ -198,7 +201,7 @@ function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => vo
         <button
           type="button"
           onClick={onClose}
-          aria-label="Cerrar"
+          aria-label={t("close")}
           className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 text-white transition hover:bg-black/50"
         >
           ✕
@@ -208,7 +211,7 @@ function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => vo
         <div className="aspect-video w-full bg-[var(--color-bg-panel-2)]">
           {thumb.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={thumb.imageUrl} alt={thumb.prompt ?? "Miniatura"} className="h-full w-full object-contain" />
+            <img src={thumb.imageUrl} alt={thumb.prompt ?? t("thumbAlt")} className="h-full w-full object-contain" />
           ) : (
             <div className="h-full w-full bg-gradient-to-br from-[var(--color-pastel-purple)] via-[var(--color-pastel-blue)] to-[var(--color-pastel-green)]" />
           )}
@@ -219,22 +222,22 @@ function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => vo
           {thumb.prompt && <h3 className="font-display text-lg font-bold">{thumb.prompt}</h3>}
 
           <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
-            Estilo usado por la IA
+            {t("styleUsed")}
           </p>
           <p className="mt-1 whitespace-pre-wrap rounded-lg bg-[var(--color-bg-panel-2)] p-3 text-sm text-[var(--color-text-secondary)]">
-            {thumb.stylePrompt?.trim() || "Sin descripción de estilo."}
+            {thumb.stylePrompt?.trim() || t("noStyle")}
           </p>
 
           <div className="mt-4 flex items-center gap-3">
             <div className="leading-tight">
-              <p className="text-xs text-[var(--color-text-muted)]">Autor</p>
-              <p className="text-sm font-medium">{thumb.authorName ?? "Anónimo"}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">{t("author")}</p>
+              <p className="text-sm font-medium">{thumb.authorName ?? t("anonymous")}</p>
             </div>
             <Link
               href={`/gallery/${thumb.id}`}
               className="ml-auto rounded-lg border border-[var(--color-border-strong)] px-3 py-1.5 text-sm font-medium transition hover:border-[var(--color-accent)]"
             >
-              Ver en la galería
+              {t("viewInGallery")}
             </Link>
           </div>
         </div>

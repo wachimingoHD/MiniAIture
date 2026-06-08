@@ -7,19 +7,20 @@
 // suspensivos y el respeto a prefers-reduced-motion se definen en CSS.
 // =============================================================================
 
+import { useTranslations } from "next-intl";
+
 export function MascotLoader({ fetchMode = false }: { fetchMode?: boolean }) {
+  const t = useTranslations("loader");
   return (
     <div className="flex flex-col items-center justify-center gap-5 py-10 text-center">
       <div className="peng-paint" aria-hidden />
 
       <div>
         <p className="font-display text-lg">
-          Creando tu miniatura<span className="loading-dots" />
+          {t("creating")}<span className="loading-dots" />
         </p>
         <p className="mt-1 max-w-xs text-sm text-[var(--color-text-secondary)]">
-          {fetchMode
-            ? "Tu miniatura se está generando en modo de baja prioridad. Puede tardar varios minutos."
-            : "Nuestras mascotas están dando los últimos retoques."}
+          {fetchMode ? t("fetchMode") : t("normal")}
         </p>
       </div>
 

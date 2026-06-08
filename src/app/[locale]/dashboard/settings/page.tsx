@@ -3,8 +3,9 @@
 // Perfil del usuario: foto/nombre, créditos (diario + mensual con cuenta atrás),
 // plan y renovación (cancelar / hazte PRO), stats, y edición de displayName.
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useTranslations, useLocale } from "next-intl";
+import { Link } from "@/i18n/navigation";
 import PageHeader from "@/components/ui/PageHeader";
 import { signInWithGoogle, signOutUser, subscribeToAuthState } from "@/lib/auth/firebase-client";
 
@@ -31,21 +32,26 @@ interface Profile {
   cancelAtPeriodEnd: boolean;
 }
 
-function timeUntil(iso: string | undefined, now: number): string {
+function timeUntil(iso: string | undefined, now: number, soonLabel: string): string {
   if (!iso) return "—";
   const ms = Date.parse(iso) - now;
-  if (!Number.isFinite(ms) || ms <= 0) return "en breve";
+  if (!Number.isFinite(ms) || ms <= 0) return soonLabel;
   const h = Math.floor(ms / 3_600_000);
   const m = Math.floor((ms % 3_600_000) / 60_000);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
-function fmtDate(iso: string | null | undefined): string {
+function fmtDate(iso: string | null | undefined, locale: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
+  return Number.isNaN(d.getTime())
+    ? "—"
+    : d.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
 }
 
 export default function SettingsPage() {
+  const t = useTranslations("settings");
+  const tAuth = useTranslations("auth");
+  const locale = useLocale();
   const [token, setToken] = useState<string | null>(null);
   const [photoURL, setPhotoURL] = useState<string | null>(null);
   const [memberSince, setMemberSince] = useState<string | null>(null);
@@ -101,10 +107,10 @@ export default function SettingsPage() {
       });
       const data = (await res.json()) as { error?: string; displayName?: string };
       if (!res.ok) {
-        setMsg({ kind: "err", text: data.error ?? "No se pudo guardar." });
+        setMsg({ kind: "err", text: data.error ?? t("saveFailed") });
         return;
       }
-      setMsg({ kind: "ok", text: "Nombre actualizado." });
+      setMsg({ kind: "ok", text: t("nameUpdated") });
       if (data.displayName) setDisplayName(data.displayName);
     } catch (err) {
       setMsg({ kind: "err", text: (err as Error).message });
@@ -115,18 +121,18 @@ export default function SettingsPage() {
 
   const cancelSubscription = async () => {
     if (!token) return;
-    if (!window.confirm("¿Cancelar tu suscripción PRO? Seguirás siendo PRO hasta el final del periodo ya pagado.")) return;
+    if (!window.confirm(t("cancelConfirm"))) return;
     setCancelBusy(true);
     setMsg(null);
     try {
       const res = await fetch("/api/billing/cancel", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
-        setMsg({ kind: "err", text: data.error ?? "No se pudo cancelar." });
+        setMsg({ kind: "err", text: data.error ?? t("cancelFailed") });
         return;
       }
       setProfile((p) => (p ? { ...p, cancelAtPeriodEnd: true } : p));
-      setMsg({ kind: "ok", text: "Suscripción cancelada. Seguirás siendo PRO hasta el final del periodo." });
+      setMsg({ kind: "ok", text: t("cancelSuccess") });
     } catch (err) {
       setMsg({ kind: "err", text: (err as Error).message });
     } finally {
@@ -136,17 +142,17 @@ export default function SettingsPage() {
 
   return (
     <main className="mx-auto max-w-[680px] px-4 py-8 md:px-8 md:py-12">
-      <PageHeader subtitle="Tu perfil" />
+      <PageHeader subtitle={t("headerSubtitle")} />
       <div className="mt-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Tu perfil</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
       </div>
 
       {loading ? (
-        <p className="mt-6 text-sm text-[var(--color-text-muted)]">Cargando…</p>
+        <p className="mt-6 text-sm text-[var(--color-text-muted)]">{t("loading")}</p>
       ) : !token || !profile ? (
         <div className="mt-6 flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-4">
-          <p className="text-sm text-[var(--color-text-muted)]">Inicia sesión para ver tu perfil.</p>
-          <button type="button" onClick={() => void signInWithGoogle()} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm">Iniciar sesión</button>
+          <p className="text-sm text-[var(--color-text-muted)]">{t("signInToView")}</p>
+          <button type="button" onClick={() => void signInWithGoogle()} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm">{tAuth("signIn")}</button>
         </div>
       ) : (
         <div className="mt-6 space-y-6">
@@ -161,26 +167,26 @@ export default function SettingsPage() {
               </span>
             )}
             <div className="min-w-0">
-              <p className="truncate font-display text-xl font-bold">{displayName || "Sin nombre"}</p>
+              <p className="truncate font-display text-xl font-bold">{displayName || t("noName")}</p>
               <p className="truncate text-sm text-[var(--color-text-secondary)]">{profile.email}</p>
               {memberSince && (
-                <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">Miembro desde {fmtDate(memberSince)}</p>
+                <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">{t("memberSince", { date: fmtDate(memberSince, locale) })}</p>
               )}
             </div>
           </section>
 
           {/* Créditos */}
           <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-5">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Créditos</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">{t("credits")}</h2>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <div className="rounded-xl bg-[var(--color-bg-panel-2)] p-3">
                 <p className="text-2xl font-bold">{profile.credits.daily}</p>
-                <p className="text-xs text-[var(--color-text-muted)]">diarios · se renuevan en {timeUntil(profile.credits.dailyResetAt, now)}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">{t("dailyRenew", { time: timeUntil(profile.credits.dailyResetAt, now, t("soon")) })}</p>
               </div>
               <div className="rounded-xl bg-[var(--color-bg-panel-2)] p-3">
                 <p className="text-2xl font-bold">{profile.plan === "pro" ? profile.credits.monthly : "—"}</p>
                 <p className="text-xs text-[var(--color-text-muted)]">
-                  {profile.plan === "pro" ? `mensuales · renuevan el ${fmtDate(profile.credits.monthlyResetAt)}` : "bolsa mensual (solo PRO)"}
+                  {profile.plan === "pro" ? t("monthlyRenew", { date: fmtDate(profile.credits.monthlyResetAt, locale) }) : t("monthlyProOnly")}
                 </p>
               </div>
             </div>
@@ -189,7 +195,7 @@ export default function SettingsPage() {
           {/* Plan */}
           <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Plan</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">{t("plan")}</h2>
               <span className={`rounded-full px-3 py-1 text-xs font-bold ${profile.plan === "pro" ? "bg-[var(--color-accent)] text-white" : "bg-[var(--color-bg-panel-2)] text-[var(--color-text-secondary)]"}`}>
                 {profile.plan.toUpperCase()}
               </span>
@@ -198,12 +204,18 @@ export default function SettingsPage() {
               <div className="mt-3 space-y-3">
                 {profile.cancelAtPeriodEnd ? (
                   <p className="text-sm text-[var(--color-text-secondary)]">
-                    Tu suscripción se cancelará el <strong>{fmtDate(profile.subscriptionEnd)}</strong>. Seguirás siendo PRO hasta entonces.
+                    {t.rich("willCancelOn", {
+                      date: fmtDate(profile.subscriptionEnd, locale),
+                      strong: (c) => <strong>{c}</strong>,
+                    })}
                   </p>
                 ) : (
                   <>
                     <p className="text-sm text-[var(--color-text-secondary)]">
-                      Se renueva el <strong>{fmtDate(profile.subscriptionEnd)}</strong>.
+                      {t.rich("renewsOn", {
+                        date: fmtDate(profile.subscriptionEnd, locale),
+                        strong: (c) => <strong>{c}</strong>,
+                      })}
                     </p>
                     <button
                       type="button"
@@ -211,16 +223,16 @@ export default function SettingsPage() {
                       onClick={() => void cancelSubscription()}
                       className="rounded-md border border-[var(--color-danger)]/50 px-3 py-1.5 text-sm text-[var(--color-danger)] transition hover:border-[var(--color-danger)] disabled:opacity-50"
                     >
-                      {cancelBusy ? "Cancelando…" : "Cancelar suscripción"}
+                      {cancelBusy ? t("canceling") : t("cancelSubscription")}
                     </button>
                   </>
                 )}
               </div>
             ) : (
               <div className="mt-3 flex items-center justify-between gap-3">
-                <p className="text-sm text-[var(--color-text-secondary)]">Hazte PRO para más generaciones, alta resolución y publicar en la galería.</p>
+                <p className="text-sm text-[var(--color-text-secondary)]">{t("upgradePitch")}</p>
                 <Link href="/pricing" className="shrink-0 rounded-md bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--color-accent-strong)]">
-                  Hazte PRO
+                  {t("goPro")}
                 </Link>
               </div>
             )}
@@ -229,19 +241,19 @@ export default function SettingsPage() {
           {/* Stats */}
           {profile.stats && (
             <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-5">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Uso</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">{t("usage")}</h2>
               <div className="mt-3 grid grid-cols-3 gap-3 text-center">
                 <div className="rounded-xl bg-[var(--color-bg-panel-2)] p-3">
                   <p className="text-xl font-bold">{profile.stats.totalImagesGenerated ?? 0}</p>
-                  <p className="text-[11px] text-[var(--color-text-muted)]">miniaturas</p>
+                  <p className="text-[11px] text-[var(--color-text-muted)]">{t("statThumbnails")}</p>
                 </div>
                 <div className="rounded-xl bg-[var(--color-bg-panel-2)] p-3">
                   <p className="text-xl font-bold">{(profile.stats.googleGenerations ?? 0) + (profile.stats.falGenerations ?? 0)}</p>
-                  <p className="text-[11px] text-[var(--color-text-muted)]">generaciones</p>
+                  <p className="text-[11px] text-[var(--color-text-muted)]">{t("statGenerations")}</p>
                 </div>
                 <div className="rounded-xl bg-[var(--color-bg-panel-2)] p-3">
                   <p className="text-xl font-bold">{profile.stats.monthsSubscribed ?? 0}</p>
-                  <p className="text-[11px] text-[var(--color-text-muted)]">meses PRO</p>
+                  <p className="text-[11px] text-[var(--color-text-muted)]">{t("statMonthsPro")}</p>
                 </div>
               </div>
             </section>
@@ -249,24 +261,24 @@ export default function SettingsPage() {
 
           {/* Cambiar nombre */}
           <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-5">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Nombre público</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">{t("publicName")}</h2>
             <input
               type="text"
               value={displayName}
               minLength={3}
               maxLength={30}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Tu nombre público"
+              placeholder={t("publicNamePlaceholder")}
               className="mt-3 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm"
             />
-            <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">3–30 caracteres. Letras, números, guiones, guiones bajos y puntos.</p>
+            <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">{t("publicNameHint")}</p>
             <button
               type="button"
               disabled={busy || displayName.trim().length < 3}
               onClick={() => void save()}
               className="mt-3 rounded-md bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
-              {busy ? "Guardando…" : "Guardar"}
+              {busy ? t("saving") : t("save")}
             </button>
           </section>
 
@@ -280,7 +292,7 @@ export default function SettingsPage() {
             onClick={() => void signOutUser()}
             className="w-full rounded-md border border-[var(--color-border-strong)] px-4 py-2.5 text-sm font-medium transition hover:border-[var(--color-accent)]"
           >
-            Cerrar sesión
+            {tAuth("signOut")}
           </button>
         </div>
       )}

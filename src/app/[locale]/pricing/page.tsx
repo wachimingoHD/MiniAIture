@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import PageHeader from "@/components/ui/PageHeader";
 import {
   getCurrentIdToken,
@@ -10,6 +11,8 @@ import {
 } from "@/lib/auth/firebase-client";
 
 export default function PricingPage() {
+  const t = useTranslations("pricing");
+  const tAuth = useTranslations("auth");
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [plan, setPlan] = useState<"free" | "pro" | null>(null);
@@ -58,7 +61,7 @@ export default function PricingPage() {
     try {
       const token = authToken ?? (await getCurrentIdToken());
       if (!token) {
-        setError("Sign in is required before starting checkout.");
+        setError(t("signInRequired"));
         return;
       }
       const res = await fetch("/api/billing/checkout", {
@@ -71,7 +74,7 @@ export default function PricingPage() {
       });
       const payload = (await res.json()) as { url?: string; error?: string };
       if (!res.ok || !payload.url) {
-        setError(payload.error ?? "Unable to create checkout session.");
+        setError(payload.error ?? t("checkoutFailed"));
         return;
       }
       window.location.href = payload.url;
@@ -84,11 +87,11 @@ export default function PricingPage() {
 
   return (
     <main className="mx-auto max-w-[980px] px-4 py-8 md:px-8 md:py-12">
-      <PageHeader subtitle="Planes y precios" />
+      <PageHeader subtitle={t("headerSubtitle")} />
       <div className="mt-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Planes y precios</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
         <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-          Elige el plan que mejor encaja con tu ritmo de creación de miniaturas.
+          {t("subtitle")}
         </p>
       </div>
 
@@ -98,8 +101,8 @@ export default function PricingPage() {
             <div>
               <p className="text-[var(--color-text-primary)]">{authEmail}</p>
               <p className="text-[var(--color-text-muted)]">
-                Plan: {plan ? plan.toUpperCase() : "unknown"}
-                {subscriptionStatus ? ` - Subscription: ${subscriptionStatus}` : ""}
+                {t("planLabel", { plan: plan ? plan.toUpperCase() : t("planUnknown") })}
+                {subscriptionStatus ? t("subscriptionSuffix", { status: subscriptionStatus }) : ""}
               </p>
             </div>
             <button
@@ -108,13 +111,13 @@ export default function PricingPage() {
               onClick={() => void signOutUser()}
               className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm hover:border-[var(--color-accent)] disabled:opacity-50"
             >
-              Sign out
+              {tAuth("signOut")}
             </button>
           </div>
         ) : (
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-[var(--color-text-muted)]">
-              Sign in to start your Pro subscription.
+              {t("signInToSubscribe")}
             </p>
             <button
               type="button"
@@ -136,7 +139,7 @@ export default function PricingPage() {
               }}
               className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm hover:border-[var(--color-accent)] disabled:opacity-50"
             >
-              Sign in
+              {tAuth("signIn")}
             </button>
           </div>
         )}
@@ -144,26 +147,26 @@ export default function PricingPage() {
 
       <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
         <article className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-5">
-          <h2 className="text-lg font-semibold">Free</h2>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">EUR 0 / month</p>
+          <h2 className="text-lg font-semibold">{t("free")}</h2>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">{t("freePrice")}</p>
           <ul className="mt-4 space-y-2 text-sm text-[var(--color-text-secondary)]">
-            <li>100 daily credits</li>
-            <li>512px output</li>
-            <li>Gemini Flex only</li>
-            <li>No server gallery</li>
+            <li>{t("freeFeature1")}</li>
+            <li>{t("freeFeature2")}</li>
+            <li>{t("freeFeature3")}</li>
+            <li>{t("freeFeature4")}</li>
           </ul>
         </article>
 
         <article className="rounded-lg border border-[var(--color-accent)] bg-[var(--color-accent-soft)] p-5">
-          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Pro</h2>
+          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">{t("pro")}</h2>
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            Subscription via Stripe
+            {t("proPrice")}
           </p>
           <ul className="mt-4 space-y-2 text-sm text-[var(--color-text-secondary)]">
-            <li>More daily and monthly credits</li>
-            <li>Higher resolutions + upscale</li>
-            <li>Persistent server gallery</li>
-            <li>Automatic renewals handled by Stripe</li>
+            <li>{t("proFeature1")}</li>
+            <li>{t("proFeature2")}</li>
+            <li>{t("proFeature3")}</li>
+            <li>{t("proFeature4")}</li>
           </ul>
           <button
             type="button"
@@ -171,11 +174,11 @@ export default function PricingPage() {
             onClick={() => void startCheckout()}
             className="mt-5 w-full rounded-md bg-[var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--color-accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {alreadyPro ? "Already acquired" : busy ? "Opening checkout..." : "Subscribe to Pro"}
+            {alreadyPro ? t("alreadyAcquired") : busy ? t("openingCheckout") : t("subscribeToPro")}
           </button>
           {!authEmail && (
             <p className="mt-2 text-xs text-[var(--color-text-muted)]">
-              Sign in first to enable checkout.
+              {t("signInFirst")}
             </p>
           )}
         </article>
@@ -183,7 +186,7 @@ export default function PricingPage() {
 
       {error && (
         <div className="mt-6 rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-3 text-sm text-[var(--color-text-secondary)]">
-          <strong className="text-[var(--color-danger)]">Error:</strong> {error}
+          <strong className="text-[var(--color-danger)]">{t("errorLabel")}</strong> {error}
         </div>
       )}
     </main>

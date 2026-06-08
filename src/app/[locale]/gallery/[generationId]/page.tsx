@@ -6,8 +6,9 @@
 
 import type { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getTranslations, setRequestLocale } from "next-intl/server";
+import { Link } from "@/i18n/navigation";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
 import { getGenerationById, type GenerationWithId } from "@/lib/firestore/generations";
 import { generateAltText } from "@/lib/seo";
@@ -44,18 +45,21 @@ function shortText(text: string, max: number): string {
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ generationId: string }>;
+  params: Promise<{ locale: string; generationId: string }>;
 }): Promise<Metadata> {
-  const { generationId } = await params;
+  const { locale, generationId } = await params;
+  const t = await getTranslations({ locale, namespace: "galleryDetail.meta" });
   const gen = await loadPublicGeneration(generationId);
-  if (!gen) return { title: "Miniatura no encontrada | MiniAItura Gallery" };
+  if (!gen) return { title: t("notFound") };
 
   const desc = shortText(gen.userPrompt, 150);
-  const title = `Miniatura de YouTube${gen.nicho ? ` de ${gen.nicho}` : ""}: ${shortText(gen.userPrompt, 55)}`;
+  const title = gen.nicho
+    ? t("titleWithNiche", { nicho: gen.nicho, prompt: shortText(gen.userPrompt, 55) })
+    : t("title", { prompt: shortText(gen.userPrompt, 55) });
   return {
     title,
-    description: `Miniatura de YouTube generada con IA: ${desc}`,
-    alternates: { canonical: `/gallery/${generationId}` },
+    description: t("description", { desc }),
+    alternates: { canonical: `/${locale}/gallery/${generationId}` },
     openGraph: {
       title,
       description: desc,
@@ -73,9 +77,11 @@ export async function generateMetadata({
 export default async function GenerationDetailPage({
   params,
 }: {
-  params: Promise<{ generationId: string }>;
+  params: Promise<{ locale: string; generationId: string }>;
 }) {
-  const { generationId } = await params;
+  const { locale, generationId } = await params;
+  setRequestLocale(locale);
+  const t = await getTranslations("galleryDetail");
   const gen = await loadPublicGeneration(generationId);
   if (!gen) notFound();
 
@@ -98,7 +104,7 @@ export default async function GenerationDetailPage({
 
       <nav className="mb-6 text-sm text-[var(--color-text-secondary)]">
         <Link href="/gallery" className="hover:text-[var(--color-accent)]">
-          ← Galería de la comunidad
+          {t("backToGallery")}
         </Link>
       </nav>
 
@@ -122,13 +128,13 @@ export default async function GenerationDetailPage({
         <aside className="space-y-4 text-sm">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">{shortText(gen.userPrompt, 80)}</h1>
-            <p className="mt-1 text-[var(--color-text-muted)]">Por @{authorName}</p>
+            <p className="mt-1 text-[var(--color-text-muted)]">{t("byAuthor", { author: authorName })}</p>
           </div>
 
           {/* Contenido (qué aparece en la miniatura) */}
           {gen.userPrompt && (
             <div>
-              <p className="mb-1 font-medium text-[var(--color-text-primary)]">Contenido</p>
+              <p className="mb-1 font-medium text-[var(--color-text-primary)]">{t("content")}</p>
               <p className="whitespace-pre-wrap rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2 text-[var(--color-text-secondary)]">
                 {gen.userPrompt}
               </p>
@@ -138,7 +144,7 @@ export default async function GenerationDetailPage({
           {/* Estilo (el look) */}
           {gen.stylePrompt && (
             <div>
-              <p className="mb-1 font-medium text-[var(--color-text-primary)]">Estilo</p>
+              <p className="mb-1 font-medium text-[var(--color-text-primary)]">{t("style")}</p>
               <p className="whitespace-pre-wrap rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2 text-[var(--color-text-secondary)]">
                 {gen.stylePrompt}
               </p>
@@ -149,11 +155,11 @@ export default async function GenerationDetailPage({
           <UseInGenerator generationId={gen.id} content={gen.userPrompt} style={gen.stylePrompt || null} />
 
           {gen.nicho && (
-            <p className="text-[var(--color-text-muted)]">Nicho: {gen.nicho}</p>
+            <p className="text-[var(--color-text-muted)]">{t("niche", { nicho: gen.nicho })}</p>
           )}
 
           <p className="text-[var(--color-text-muted)]">
-            Este estilo ha sido usado {gen.timesStyleCopied} veces
+            {t("styleUsedTimes", { count: gen.timesStyleCopied })}
           </p>
         </aside>
       </article>

@@ -5,7 +5,8 @@
 // Las miniaturas vienen de getPublicGenerations() (isPublic == true).
 // =============================================================================
 
-import Link from "next/link";
+import { getTranslations, setRequestLocale } from "next-intl/server";
+import { Link } from "@/i18n/navigation";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
 import { getPublicGenerations, type GenerationWithId } from "@/lib/firestore/generations";
 import PenguinThumbnailMarquee, { type MarqueeThumb } from "@/components/ui/PenguinThumbnailMarquee";
@@ -13,7 +14,7 @@ import PenguinThumbnailMarquee, { type MarqueeThumb } from "@/components/ui/Peng
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function loadPublicThumbs(): Promise<MarqueeThumb[]> {
+async function loadPublicThumbs(anonymousLabel: string): Promise<MarqueeThumb[]> {
   const db = adminFirestore();
   if (!db) return [];
   try {
@@ -43,7 +44,7 @@ async function loadPublicThumbs(): Promise<MarqueeThumb[]> {
       imageUrl: g.imageUrl,
       prompt: g.videoTitle ?? g.userPrompt,
       stylePrompt: g.stylePrompt,
-      authorName: names.get(g.userId) ?? "Anónimo",
+      authorName: names.get(g.userId) ?? anonymousLabel,
     }));
   } catch {
     return [];
@@ -63,8 +64,16 @@ const SQUARES: Square[] = [
   { top: "74%", right: "4%", size: 110, color: "var(--color-pastel-green)", delay: "2.1s" },
 ];
 
-export default async function LandingPage() {
-  const thumbs = await loadPublicThumbs();
+export default async function LandingPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+  const t = await getTranslations("landing");
+  const tCommon = await getTranslations("common");
+  const thumbs = await loadPublicThumbs(tCommon("anonymous"));
 
   return (
     <div className="relative">
@@ -94,7 +103,7 @@ export default async function LandingPage() {
           Mini<span className="text-[var(--color-accent)]">AI</span>tura
         </h1>
         <p className="mt-5 max-w-xl text-lg text-[var(--color-text-secondary)] md:text-xl">
-          Crea miniaturas de YouTube increíbles con IA. Describe tu vídeo y deja que las hagan por ti.
+          {t("subtitle")}
         </p>
 
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
@@ -102,13 +111,13 @@ export default async function LandingPage() {
             href="/generate"
             className="rounded-xl bg-[var(--color-accent)] px-6 py-3 font-semibold text-white shadow-lg shadow-[var(--color-accent)]/25 transition hover:-translate-y-0.5 hover:bg-[var(--color-accent-strong)]"
           >
-            Crea tu miniatura gratis
+            {t("ctaPrimary")}
           </Link>
           <Link
             href="/gallery"
             className="rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-bg-panel)] px-6 py-3 font-semibold text-[var(--color-text-primary)] transition hover:-translate-y-0.5 hover:border-[var(--color-accent)]"
           >
-            Explora la galería pública
+            {t("ctaSecondary")}
           </Link>
         </div>
       </section>
@@ -116,7 +125,7 @@ export default async function LandingPage() {
       {/* ÚLTIMAS GENERACIONES PÚBLICAS — aparece al deslizar (reveal 100% CSS). */}
       <section className="on-scroll-rise relative z-10 pb-24 pt-6">
         <h2 className="mb-8 text-center text-sm font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
-          Últimas generaciones de la comunidad
+          {t("communitySection")}
         </h2>
         <PenguinThumbnailMarquee items={thumbs} />
         </section>

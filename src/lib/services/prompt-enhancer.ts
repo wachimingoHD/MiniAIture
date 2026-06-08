@@ -11,12 +11,12 @@
 import { THUMBNAIL_SYSTEM_PROMPT } from "@/lib/prompts/system-prompt";
 import { callGeminiFlash, type GeminiTextContent, type GeminiTextPart } from "@/lib/geminiText";
 
-// Una imagen de referencia con su etiqueta visible ("Imagen 1", "Imagen 2"…),
-// que es como el usuario la cita en el contenido ([Imagen N]).
+// Una imagen de referencia con su etiqueta visible ("Image 1", "Image 2"…),
+// que es como el usuario la cita en el contenido ([Image N]).
 export interface EnhancerReferenceImage {
   data: string; // base64 (sin prefijo data:)
   mimeType: string;
-  label: string; // "Imagen 1"
+  label: string; // "Image 1"
 }
 
 export interface EnhancerInput {
@@ -44,7 +44,7 @@ export function buildUserMessage(input: EnhancerInput): string {
     const labels = input.referenceImages.map((r) => r.label).join(", ");
     userMessage +=
       `ATTACHED REFERENCE IMAGES (in this order): ${labels}.\n` +
-      `When the description cites [Imagen N], that attached image IS a real subject to place in the thumbnail. In your output prompt refer to it as "the subject from reference image N" and preserve its identity. Every cited subject must appear in the final image.\n\n`;
+      `When the description cites [Image N], that attached image IS a real subject to place in the thumbnail. In your output prompt refer to it as "the subject from reference image N" and preserve its identity. Every cited subject must appear in the final image.\n\n`;
   }
   if (input.stylePrompt) {
     userMessage += `VISUAL STYLE DIRECTION: ${input.stylePrompt}\n\n`;
@@ -56,11 +56,13 @@ export function buildUserMessage(input: EnhancerInput): string {
   return userMessage;
 }
 
-// Convierte las citas "[Imagen N]" del usuario en una referencia que el modelo
+// Convierte las citas "[Image N]" del usuario en una referencia que el modelo
 // de imagen entiende ("reference image N"). Se usa en el respaldo determinista y
 // es seguro aplicarlo siempre (si no hay citas, no cambia nada).
+// El patrón `imagen?` acepta tanto "Image N" (token actual) como "Imagen N"
+// (legacy en español), para no romper contenido antiguo ni de ningún idioma.
 export function normalizeImageCitations(text: string): string {
-  return text.replace(/\[\s*imagen\s*(\d+)\s*\]/gi, "reference image $1");
+  return text.replace(/\[\s*imagen?\s*(\d+)\s*\]/gi, "reference image $1");
 }
 
 // Prompt de respaldo determinista cuando el LLM no está disponible.
@@ -94,8 +96,8 @@ export async function enhancePrompt(
     return { enhancedPrompt: buildFallbackPrompt(input), usedLlm: false, llmError: "No API key." };
   }
 
-  // Adjuntamos TODAS las imágenes, cada una precedida por su etiqueta ("Imagen 1:")
-  // para que el LLM sepa qué imagen es cuál y pueda casarla con los [Imagen N]
+  // Adjuntamos TODAS las imágenes, cada una precedida por su etiqueta ("Image 1:")
+  // para que el LLM sepa qué imagen es cuál y pueda casarla con los [Image N]
   // citados en el contenido. El texto de instrucciones va al final.
   const parts: GeminiTextPart[] = [];
   for (const ref of input.referenceImages) {

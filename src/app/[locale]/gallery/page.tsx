@@ -6,7 +6,8 @@
 
 import type { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
+import { getTranslations, setRequestLocale } from "next-intl/server";
+import { Link } from "@/i18n/navigation";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
 import { getPublicGenerations, type GenerationWithId } from "@/lib/firestore/generations";
 import { generateAltText } from "@/lib/seo";
@@ -15,17 +16,24 @@ import PageHeader from "@/components/ui/PageHeader";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Galería de miniaturas de YouTube creadas por la comunidad",
-  description:
-    "Miniaturas de YouTube generadas con IA por la comunidad de MiniAItura. Explora estilos por nicho y úsalos en tus propias miniaturas.",
-  alternates: { canonical: "/gallery" },
-  openGraph: {
-    title: "Galería de miniaturas de la comunidad | MiniAItura",
-    description: "Explora miniaturas de YouTube generadas con IA por la comunidad.",
-    type: "website",
-  },
-};
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "galleryPublic.meta" });
+  return {
+    title: t("title"),
+    description: t("description"),
+    alternates: { canonical: `/${locale}/gallery` },
+    openGraph: {
+      title: t("ogTitle"),
+      description: t("ogDescription"),
+      type: "website",
+    },
+  };
+}
 
 async function loadPublic(): Promise<GenerationWithId[]> {
   const db = adminFirestore();
@@ -37,24 +45,31 @@ async function loadPublic(): Promise<GenerationWithId[]> {
   }
 }
 
-export default async function PublicGalleryPage() {
+export default async function PublicGalleryPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+  const t = await getTranslations("galleryPublic");
   const items = await loadPublic();
 
   return (
     <main className="mx-auto max-w-[1200px] px-4 py-8 md:px-8 md:py-12">
-      <PageHeader subtitle="Galería de la comunidad" />
+      <PageHeader subtitle={t("headerSubtitle")} />
       <div className="mt-6">
         <h1 className="text-2xl font-semibold tracking-tight">
-          Galería de miniaturas creadas por la comunidad
+          {t("title")}
         </h1>
         <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-          Miniaturas de YouTube generadas con IA. Haz clic para ver el estilo.
+          {t("subtitle")}
         </p>
       </div>
 
       {items.length === 0 ? (
         <p className="mt-8 text-sm text-[var(--color-text-muted)]">
-          Todavía no hay miniaturas públicas. ¡Sé el primero en publicar la tuya!
+          {t("empty")}
         </p>
       ) : (
         <section className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -79,7 +94,7 @@ export default async function PublicGalleryPage() {
                     <p className="line-clamp-2 text-xs text-[var(--color-text-secondary)]">{gen.userPrompt}</p>
                     {gen.styleType === "custom" && gen.timesStyleCopied > 0 && (
                       <span className="text-[11px] text-[var(--color-text-muted)]">
-                        Estilo usado {gen.timesStyleCopied} veces
+                        {t("styleUsedTimes", { count: gen.timesStyleCopied })}
                       </span>
                     )}
                   </figcaption>

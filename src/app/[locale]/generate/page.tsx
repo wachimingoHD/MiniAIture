@@ -10,7 +10,8 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
 import {
   DEFAULT_NANO_BANANA_PARAMS,
   MAX_REFERENCE_IMAGES,
@@ -83,6 +84,9 @@ function formatBytes(bytes: number): string {
 }
 
 export default function HomePage() {
+  const t = useTranslations("generate");
+  const tNav = useTranslations("nav");
+  const tAuth = useTranslations("auth");
   const [params, setParams] = useState<NanoBananaParams>(DEFAULT_NANO_BANANA_PARAMS);
   const [referenceImages, setReferenceImages] = useState<UploadedReference[]>([]);
   const [referenceError, setReferenceError] = useState<string | null>(null);
@@ -265,7 +269,7 @@ export default function HomePage() {
     setReferenceImages((prev) => prev.map((r) => (r.id === id ? { ...r, instructions: text } : r)));
   }, []);
 
-  // Inserta una etiqueta `[Imagen N]` en el campo Contenido, en la posición del
+  // Inserta una etiqueta `[Image N]` en el campo Contenido, en la posición del
   // cursor (o al final si el campo no tiene foco). Así el usuario puede referirse
   // a una imagen concreta desde el texto del contenido.
   const insertRefToken = useCallback((label: string) => {
@@ -359,15 +363,15 @@ export default function HomePage() {
 
     for (const file of arr) {
       if (next.length >= MAX_REFERENCE_IMAGES) {
-        error = `Max ${MAX_REFERENCE_IMAGES} reference images.`;
+        error = t("maxRefImages", { max: MAX_REFERENCE_IMAGES });
         break;
       }
       if (!file.type.startsWith("image/")) {
-        error = "Only image files are allowed.";
+        error = t("onlyImages");
         continue;
       }
       if (totalBytes + file.size > MAX_REFERENCE_IMAGES_TOTAL_BYTES) {
-        error = `Total size limit ${MAX_REFERENCE_IMAGES_TOTAL_BYTES / 1024 / 1024} MB exceeded.`;
+        error = t("totalSizeLimit", { mb: MAX_REFERENCE_IMAGES_TOTAL_BYTES / 1024 / 1024 });
         break;
       }
       const base64 = await fileToBase64(file);
@@ -392,12 +396,12 @@ export default function HomePage() {
     const title = videoTitle.trim();
     const content = params.prompt.trim();
     if (!title && !content) {
-      setSuggestError("Escribe un título o describe el contenido del vídeo primero.");
+      setSuggestError(t("writeTitleOrContent"));
       return;
     }
     const token = authToken ?? (await getCurrentIdToken());
     if (!token) {
-      setSuggestError("Inicia sesión para sugerir un estilo.");
+      setSuggestError(t("signInToSuggest"));
       return;
     }
     setSuggestingStyle(true);
@@ -411,7 +415,7 @@ export default function HomePage() {
       const data = (await res.json()) as { style?: string; error?: string; creditsRemaining?: { daily: number; monthly: number } };
       if (data.creditsRemaining) setCreditSnapshot(data.creditsRemaining);
       if (!res.ok || !data.style) {
-        setSuggestError(data.error ?? "No se pudo sugerir un estilo.");
+        setSuggestError(data.error ?? t("suggestFailed"));
         return;
       }
       setStyleText(data.style);
@@ -425,12 +429,12 @@ export default function HomePage() {
 
   const generate = async () => {
     if (!derivedParams.prompt.trim()) {
-      setGenerationError("Prompt is required.");
+      setGenerationError(t("promptRequired"));
       return;
     }
     const token = authToken ?? (await getCurrentIdToken());
     if (!token) {
-      setGenerationError("Sign in is required before generating.");
+      setGenerationError(t("signInToGenerate"));
       return;
     }
     setGenerating(true);
@@ -439,11 +443,11 @@ export default function HomePage() {
 
     const refs: ReferenceImageInput[] = referenceImages.map((r) => ({ data: r.base64, mimeType: r.mimeType, filename: r.filename, size: r.size }));
 
-    // Combina las instrucciones por imagen, etiquetadas "Imagen N" en el mismo
+    // Combina las instrucciones por imagen, etiquetadas "Image N" en el mismo
     // orden en que se envían las imágenes, para que el LLM pueda relacionar cada
-    // referencia con su `[Imagen N]` citada en el Contenido.
+    // referencia con su `[Image N]` citada en el Contenido.
     const combinedReferenceInstructions = referenceImages
-      .map((r, i) => (r.instructions.trim() ? `Imagen ${i + 1}: ${r.instructions.trim()}` : null))
+      .map((r, i) => (r.instructions.trim() ? `Image ${i + 1}: ${r.instructions.trim()}` : null))
       .filter(Boolean)
       .join("\n");
 
@@ -466,7 +470,7 @@ export default function HomePage() {
       });
       const text = await res.text();
       if (!res.ok) {
-        setGenerationError(`Generation failed: ${text || res.statusText}`);
+        setGenerationError(t("generationFailed", { detail: text || res.statusText }));
         return;
       }
       const data = JSON.parse(text) as GenerateResponse;
@@ -487,41 +491,41 @@ export default function HomePage() {
       <header className="flex items-center justify-between border-b border-[var(--color-border)] pb-5">
         <div>
           <h1 className="font-display text-xl font-bold tracking-tight">Mini<span className="text-[var(--color-accent)]">AI</span>tura</h1>
-          <p className="text-xs text-[var(--color-text-muted)]">Crea miniaturas de YouTube con IA</p>
+          <p className="text-xs text-[var(--color-text-muted)]">{t("tagline")}</p>
         </div>
         <nav className="hidden items-center gap-4 text-sm text-[var(--color-text-secondary)] md:flex">
-          <Link href="/pricing" className="hover:text-[var(--color-accent)]">Pricing</Link>
-          <Link href="/gallery" className="hover:text-[var(--color-accent)]">Comunidad</Link>
+          <Link href="/pricing" className="hover:text-[var(--color-accent)]">{tNav("pricing")}</Link>
+          <Link href="/gallery" className="hover:text-[var(--color-accent)]">{tNav("community")}</Link>
           {authEmail ? (
             <>
-              <Link href="/dashboard/gallery" className="hover:text-[var(--color-accent)]">Mi galería</Link>
-              <Link href="/dashboard/settings" className="hover:text-[var(--color-accent)]">Ajustes</Link>
+              <Link href="/dashboard/gallery" className="hover:text-[var(--color-accent)]">{tNav("myGallery")}</Link>
+              <Link href="/dashboard/settings" className="hover:text-[var(--color-accent)]">{tNav("settings")}</Link>
               <div className="flex flex-col items-end gap-1.5">
                 <p className="text-xs text-[var(--color-text-muted)]">{authEmail}</p>
                 <div className="flex items-center gap-2.5">
                   <span className="rounded-full border border-[var(--color-accent)]/30 bg-[var(--color-accent-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--color-accent-strong)]">
-                    {planLabel ? planLabel : "plan ?"}
+                    {planLabel ? planLabel : t("planUnknown")}
                   </span>
                   {creditSnapshot && (
                     <div className="flex items-center gap-3 text-xs">
                       <span className="inline-flex items-center gap-1.5 text-[var(--color-success)]">
                         <span className="h-2 w-2 rounded-full bg-[var(--color-success)]" />
                         <span className="font-semibold tabular-nums">{creditSnapshot.daily}</span>
-                        <span className="text-[var(--color-text-muted)]">diarios</span>
+                        <span className="text-[var(--color-text-muted)]">{t("daily")}</span>
                       </span>
                       <span className="inline-flex items-center gap-1.5 text-[var(--color-text-muted)]">
                         <span className="h-2 w-2 rounded-full bg-[var(--color-text-muted)]" />
                         <span className="font-semibold tabular-nums">{creditSnapshot.monthly}</span>
-                        <span>mensuales</span>
+                        <span>{t("monthly")}</span>
                       </span>
                     </div>
                   )}
                 </div>
               </div>
-              <button type="button" onClick={() => void signOutUser()} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm">Cerrar sesión</button>
+              <button type="button" onClick={() => void signOutUser()} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm">{tAuth("signOut")}</button>
             </>
           ) : (
-            <button type="button" onClick={() => void signInWithGoogle()} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm">Iniciar sesión</button>
+            <button type="button" onClick={() => void signInWithGoogle()} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm">{tAuth("signIn")}</button>
           )}
         </nav>
       </header>
@@ -529,42 +533,44 @@ export default function HomePage() {
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
         <section className="space-y-5">
           {/* Campo 1 — Título del vídeo (opcional) */}
-          <Panel title="Título del vídeo" subtitle="opcional — pero ayuda mucho a crear el gancho">
+          <Panel title={t("titleFieldTitle")} subtitle={t("titleFieldSubtitle")}>
             <input
               type="text"
               value={videoTitle}
               maxLength={200}
               onChange={(e) => setVideoTitle(e.target.value)}
-              placeholder="¿Cuál es el título de tu vídeo? (la IA lo usa para el gancho)"
+              placeholder={t("titleFieldPlaceholder")}
               className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm"
             />
           </Panel>
 
           {/* Campo 2 — Contenido (obligatorio) */}
-          <Panel title="Contenido" subtitle="Elementos de la miniatura">
+          <Panel title={t("contentTitle")} subtitle={t("contentSubtitle")}>
             <textarea
               ref={contentRef}
               value={params.prompt}
               maxLength={2000}
               onChange={(e) => setParams({ ...params, prompt: e.target.value })}
-              placeholder="Describe qué aparece en la miniatura y de qué va tu vídeo (el tema, los elementos, el momento clave)..."
+              placeholder={t("contentPlaceholder")}
               rows={5}
               className="min-h-[7rem] w-full resize-y rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm"
             />
             {referenceImages.length > 0 && (
               <p className="mt-2 text-xs text-[var(--color-text-muted)]">
-                Tip: usa <span className="font-medium text-[var(--color-text-secondary)]">[Imagen 1]</span>, <span className="font-medium text-[var(--color-text-secondary)]">[Imagen 2]</span>… para referirte a tus imágenes de referencia.
+                {t.rich("contentTip", {
+                  b: (c) => <span className="font-medium text-[var(--color-text-secondary)]">{c}</span>,
+                })}
               </p>
             )}
           </Panel>
 
           {/* Campo 3 — Estilo (texto copiable / compartible) */}
-          <Panel title="Estilo" subtitle="Estilo de la miniatura">
+          <Panel title={t("styleTitle")} subtitle={t("styleSubtitle")}>
             <textarea
               value={styleText}
               maxLength={1500}
               onChange={(e) => setStyleText(e.target.value)}
-              placeholder="Describe el estilo visual: colores, iluminación, composición, tipografía, ambiente..."
+              placeholder={t("stylePlaceholder")}
               rows={4}
               className="min-h-[6rem] w-full resize-y rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm"
             />
@@ -573,20 +579,20 @@ export default function HomePage() {
                 type="button"
                 onClick={() => void suggestStyle()}
                 disabled={suggestingStyle || !(videoTitle.trim() || params.prompt.trim())}
-                title="La IA propone un estilo según tu título y contenido"
+                title={t("suggestTitle")}
                 className="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-strong)] transition hover:border-[var(--color-accent)] disabled:opacity-50"
               >
-                {suggestingStyle ? "Pensando un estilo…" : "✨ Sugerir estilo con IA (1 crédito)"}
+                {suggestingStyle ? t("suggestBusy") : t("suggestIdle")}
               </button>
               {!(videoTitle.trim() || params.prompt.trim()) && (
-                <span className="text-xs text-[var(--color-text-muted)]">Rellena el título o el contenido primero</span>
+                <span className="text-xs text-[var(--color-text-muted)]">{t("fillFirst")}</span>
               )}
             </div>
             {suggestError && <p className="mt-1 text-xs text-[var(--color-danger)]">{suggestError}</p>}
             {styleSource.kind === "gallery" && styleText === styleSource.base && (
-              <p className="mt-2 text-xs text-[var(--color-accent)]">Estilo cargado de la galería de la comunidad. Puedes editarlo.</p>
+              <p className="mt-2 text-xs text-[var(--color-accent)]">{t("galleryStyleLoaded")}</p>
             )}
-            <p className="mb-1.5 mt-3 text-xs uppercase tracking-wide text-[var(--color-text-muted)]">Aplicar un preset</p>
+            <p className="mb-1.5 mt-3 text-xs uppercase tracking-wide text-[var(--color-text-muted)]">{t("applyPreset")}</p>
             <div className="flex flex-wrap gap-1.5">
               {STYLE_PRESETS.map((preset) => {
                 const active = styleSource.kind === "preset" && styleSource.id === preset.id && styleText === styleSource.base;
@@ -614,17 +620,20 @@ export default function HomePage() {
             onDrop={(e: DragEvent<HTMLDivElement>) => { e.preventDefault(); dragCounter.current = 0; setIsDragging(false); void addReferenceFiles(e.dataTransfer.files); }}
             className={`rounded-lg transition ${isDragging ? "ring-2 ring-[var(--color-accent)]" : ""}`}
           >
-          <Panel title="Imagen de referencia" subtitle={`opcional · ${referenceImages.length}/${MAX_REFERENCE_IMAGES} · ${formatBytes(totalReferenceBytes)}`}>
+          <Panel title={t("referenceTitle")} subtitle={t("referenceSubtitle", { count: referenceImages.length, max: MAX_REFERENCE_IMAGES, size: formatBytes(totalReferenceBytes) })}>
             <div className={`rounded-md border border-dashed px-4 py-6 text-center transition ${isDragging ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)]" : "border-[var(--color-border-strong)]"}`}>
-              <p className="mb-2 text-xs text-[var(--color-text-muted)]">Arrastra y suelta tus imágenes aquí, o</p>
-              <button type="button" className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm" onClick={() => fileInputRef.current?.click()}>Subir imagen</button>
+              <p className="mb-2 text-xs text-[var(--color-text-muted)]">{t("dropHere")}</p>
+              <button type="button" className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm" onClick={() => fileInputRef.current?.click()}>{t("uploadImage")}</button>
               <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e: ChangeEvent<HTMLInputElement>) => { if (e.target.files?.length) void addReferenceFiles(e.target.files); e.target.value = ""; }} />
             </div>
             {referenceError && <p className="mt-2 text-xs text-[var(--color-danger)]">{referenceError}</p>}
             {referenceImages.length > 0 && (
               <div className="mt-3 space-y-3">
                 {referenceImages.map((ref, i) => {
-                  const label = `Imagen ${i + 1}`;
+                  // "Image N" es un token de protocolo (se inserta como [Image N]
+                  // y el enhancer lo normaliza). Debe ser idéntico en frontend,
+                  // backend (route.ts) y el normalizador del enhancer.
+                  const label = `Image ${i + 1}`;
                   return (
                     <div key={ref.id} className="flex gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2.5">
                       <div className="relative shrink-0">
@@ -634,7 +643,7 @@ export default function HomePage() {
                           type="button"
                           onClick={() => setReferenceImages((prev) => prev.filter((x) => x.id !== ref.id))}
                           className="absolute -right-1.5 -top-1.5 rounded-full border border-[var(--color-border-strong)] bg-[var(--color-bg-panel)] px-1.5 text-xs"
-                          aria-label={`Eliminar ${label}`}
+                          aria-label={t("removeRef", { label })}
                         >
                           ×
                         </button>
@@ -645,17 +654,17 @@ export default function HomePage() {
                           <button
                             type="button"
                             onClick={() => insertRefToken(label)}
-                            title="Insertar referencia en el Contenido"
+                            title={t("insertRefTitle")}
                             className="rounded-md border border-[var(--color-border-strong)] px-2 py-0.5 text-xs transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
                           >
-                            Insertar en contenido
+                            {t("insertInContent")}
                           </button>
                         </div>
                         <textarea
                           value={ref.instructions}
                           maxLength={500}
                           onChange={(e) => setRefInstruction(ref.id, e.target.value)}
-                          placeholder="Instrucciones para esta imagen (ej: 'quiero esta cara pero sorprendida')"
+                          placeholder={t("refInstructionsPlaceholder")}
                           rows={2}
                           className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel)] px-3 py-2 text-sm"
                         />
@@ -669,33 +678,33 @@ export default function HomePage() {
           </div>
 
           {/* Campo 5 — Opciones (solo PRO) */}
-          <Panel title="Opciones">
+          <Panel title={t("optionsTitle")}>
             {isFreePlan ? (
               <p className="text-xs text-[var(--color-text-muted)]">
-                Plan FREE: 512 px y generación en cola automáticas. Hazte PRO para más opciones de calidad y resolución.
+                {t("freeOptionsNote")}
               </p>
             ) : (
               <div className="space-y-4">
                 <label className="block">
                   <span className="flex items-center justify-between text-sm">
-                    Ahorro
+                    {t("saverLabel")}
                     <input type="checkbox" checked={saver} onChange={(e) => setSaver(e.target.checked)} />
                   </span>
-                  <span className="mt-1 block text-xs text-[var(--color-text-muted)]">Generación de baja prioridad cuando sea disponible <br /> -25 créditos al coste de generación</span>
+                  <span className="mt-1 block text-xs text-[var(--color-text-muted)]">{t.rich("saverDesc", { br: () => <br /> })}</span>
                 </label>
                 <label className="block">
                   <span className="flex items-center justify-between text-sm">
-                    Alta calidad
+                    {t("highQualityLabel")}
                     <input type="checkbox" checked={highQuality} onChange={(e) => setHighQuality(e.target.checked)} />
                   </span>
-                  <span className="mt-1 block text-xs text-[var(--color-text-muted)]">Más detalle nativo, recomendado para generar letra pequeña <br /> +25 créditos al coste de generación</span>
+                  <span className="mt-1 block text-xs text-[var(--color-text-muted)]">{t.rich("highQualityDesc", { br: () => <br /> })}</span>
                 </label>
                 <label className="block">
                   <span className="flex items-center justify-between text-sm">
-                    Alta resolución
+                    {t("highResLabel")}
                     <input type="checkbox" checked={highRes} onChange={(e) => setHighRes(e.target.checked)} />
                   </span>
-                  <span className="mt-1 block text-xs text-[var(--color-text-muted)]">Resolución de imagen a 2K <br /> +25 créditos al coste de generación</span>
+                  <span className="mt-1 block text-xs text-[var(--color-text-muted)]">{t.rich("highResDesc", { br: () => <br /> })}</span>
                 </label>
               </div>
             )}
@@ -703,10 +712,10 @@ export default function HomePage() {
 
           <button type="button" disabled={generating || !derivedParams.prompt.trim() || insufficientCredits} onClick={generate} className="w-full rounded-md bg-[var(--color-accent)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
             {generating
-              ? "Generando..."
+              ? t("generating")
               : insufficientCredits
-                ? "Créditos insuficientes"
-                : `Generar · ${creditsCost} créditos`}
+                ? t("insufficientCredits")
+                : t("generateBtn", { cost: creditsCost })}
           </button>
 
           {generationError && <div className="rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-3 text-xs">{generationError}</div>}
@@ -743,6 +752,7 @@ function PublishControls({
   publishMsg: string | null;
   onPublishMsg: (m: string | null) => void;
 }) {
+  const t = useTranslations("generate");
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const generationIds = (result as GenerateResponse & { generationIds?: string[] }).generationIds ?? [];
@@ -750,7 +760,7 @@ function PublishControls({
 
   const publish = async () => {
     if (!authToken) {
-      onPublishMsg("Inicia sesión para publicar.");
+      onPublishMsg(t("signInToPublish"));
       return;
     }
     setBusy(true);
@@ -765,7 +775,7 @@ function PublishControls({
         ),
       );
       const ok = results.every((r) => r.ok);
-      onPublishMsg(ok ? "Publicado en la galería de la comunidad." : "Algunas miniaturas no se pudieron publicar.");
+      onPublishMsg(ok ? t("publishedOk") : t("publishedPartial"));
       setConfirming(false);
     } catch (err) {
       onPublishMsg((err as Error).message);
@@ -782,7 +792,7 @@ function PublishControls({
         className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-bg-panel-2)] px-4 py-2.5 text-sm font-medium transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
       >
         <span aria-hidden>🌐</span>
-        Publicar en la galería de la comunidad
+        {t("publishBtn")}
       </button>
       {confirming && (
         <PublishConfirmModal
@@ -813,35 +823,36 @@ function ResultPanel({
   publishMsg: string | null;
   onPublishMsg: (m: string | null) => void;
 }) {
+  const t = useTranslations("generate");
   const [zoomed, setZoomed] = useState<number | null>(null);
 
   if (generating) {
     return (
-      <Panel title="Resultado">
+      <Panel title={t("resultTitle")}>
         <MascotLoader fetchMode={fetchMode} />
       </Panel>
     );
   }
   if (!result) {
     return (
-      <Panel title="Resultado">
+      <Panel title={t("resultTitle")}>
         <div className="flex flex-col items-center gap-3 py-8 text-center">
           <MascotEmpty />
-          <p className="text-sm text-[var(--color-text-muted)]">Aún no hay nada. Genera una miniatura y aparecerá aquí.</p>
+          <p className="text-sm text-[var(--color-text-muted)]">{t("emptyResult")}</p>
         </div>
       </Panel>
     );
   }
 
   return (
-    <Panel title="Resultado" subtitle={`${result.images.length} ${result.images.length === 1 ? "imagen" : "imágenes"}`}>
+    <Panel title={t("resultTitle")} subtitle={t("imagesCount", { count: result.images.length })}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {result.images.map((img, i) => (
           <figure key={i} className="overflow-hidden rounded-md border border-[var(--color-border)] bg-black/40">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`data:${img.mimeType};base64,${img.data}`}
-              alt={`Generated thumbnail ${i + 1}`}
+              alt={t("generatedAlt", { n: i + 1 })}
               onClick={() => setZoomed(i)}
               className="block w-full cursor-zoom-in transition hover:opacity-95"
             />
@@ -851,14 +862,14 @@ function ResultPanel({
                 onClick={() => setZoomed(i)}
                 className="text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
               >
-                Ampliar
+                {t("enlarge")}
               </button>
               <a
                 href={`data:${img.mimeType};base64,${img.data}`}
                 download={`miniaitura-${result.requestId}-${i + 1}.png`}
                 className="font-medium text-[var(--color-accent)] hover:underline"
               >
-                Descargar
+                {t("download")}
               </a>
             </figcaption>
           </figure>
@@ -893,6 +904,7 @@ function ResultLightbox({
   requestId: string;
   onClose: () => void;
 }) {
+  const t = useTranslations("generate");
   const [mounted, setMounted] = useState(false);
   const [current, setCurrent] = useState(index);
   const total = images.length;
@@ -928,22 +940,22 @@ function ResultLightbox({
       <div className="relative flex max-h-full w-full max-w-5xl flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between pb-3">
           <span className="text-sm font-medium text-white/80">
-            {total > 1 ? `Imagen ${current + 1} de ${total}` : "Resultado"}
+            {total > 1 ? t("imageXofY", { current: current + 1, total }) : t("resultTitle")}
           </span>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar"
+            aria-label={t("close")}
             className="rounded-md border border-white/30 px-3 py-1 text-sm text-white transition hover:bg-white/10"
           >
-            Cerrar
+            {t("close")}
           </button>
         </div>
 
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
-          alt={`Resultado ${current + 1}`}
+          alt={t("resultAlt", { n: current + 1 })}
           className="mx-auto max-h-[78vh] w-auto max-w-full rounded-lg border border-white/10 object-contain"
         />
 
@@ -955,14 +967,14 @@ function ResultLightbox({
                 onClick={() => setCurrent((c) => (c - 1 + total) % total)}
                 className="rounded-md border border-white/30 px-3 py-1.5 text-sm text-white transition hover:bg-white/10"
               >
-                ‹ Anterior
+                {t("prev")}
               </button>
               <button
                 type="button"
                 onClick={() => setCurrent((c) => (c + 1) % total)}
                 className="rounded-md border border-white/30 px-3 py-1.5 text-sm text-white transition hover:bg-white/10"
               >
-                Siguiente ›
+                {t("next")}
               </button>
             </>
           )}
@@ -971,7 +983,7 @@ function ResultLightbox({
             download={`miniaitura-${requestId}-${current + 1}.png`}
             className="rounded-md bg-[var(--color-accent)] px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-[var(--color-accent-strong)]"
           >
-            Descargar
+            {t("download")}
           </a>
         </div>
       </div>

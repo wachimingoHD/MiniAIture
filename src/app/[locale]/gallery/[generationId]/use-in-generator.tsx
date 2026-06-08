@@ -5,8 +5,9 @@
 // navega a /generate, que los precarga en el formulario. Para estilo/ambos
 // registra además el uso del estilo (incrementa timesStyleCopied).
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
+import { useRouter } from "@/i18n/navigation";
 
 export const PREFILL_STORAGE_KEY = "miniaitura:prefill";
 
@@ -25,6 +26,7 @@ export default function UseInGenerator({
   content: string;
   style: string | null;
 }) {
+  const t = useTranslations("useInGenerator");
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -51,11 +53,11 @@ export default function UseInGenerator({
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
-        Usar en el generador
+        {t("heading")}
       </p>
       <div className="flex flex-wrap gap-2">
         <button type="button" disabled={busy} onClick={() => void go({ content }, false)} className={btn}>
-          Usar contenido
+          {t("useContent")}
         </button>
         {style && (
           <button
@@ -64,7 +66,7 @@ export default function UseInGenerator({
             onClick={() => void go({ style, styleFromId: generationId }, true)}
             className={btn}
           >
-            Usar estilo
+            {t("useStyle")}
           </button>
         )}
         {style && (
@@ -74,7 +76,7 @@ export default function UseInGenerator({
             onClick={() => void go({ content, style, styleFromId: generationId }, true)}
             className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[var(--color-accent-strong)] disabled:opacity-50"
           >
-            Usar ambos
+            {t("useBoth")}
           </button>
         )}
       </div>

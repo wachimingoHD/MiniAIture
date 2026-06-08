@@ -119,13 +119,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let userPromptForRecord = params.prompt;
   if (enhancerFields) {
     userPromptForRecord = enhancerFields.userPrompt;
-    // Pasamos TODAS las imágenes etiquetadas "Imagen N" en el mismo orden en que
+    // Pasamos TODAS las imágenes etiquetadas "Image N" en el mismo orden en que
     // se envían al generador de imágenes, para que el enhancer pueda casar cada
-    // [Imagen N] citada en el contenido con su imagen real.
+    // [Image N] citada en el contenido con su imagen real.
     const enhancerReferenceImages = referenceImages.map((ref, i) => ({
       data: ref.data,
       mimeType: ref.mimeType,
-      label: `Imagen ${i + 1}`,
+      label: `Image ${i + 1}`,
     }));
     const enhanced = await enhancePrompt(
       {
