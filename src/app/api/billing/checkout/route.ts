@@ -4,8 +4,27 @@ import { readBearerToken } from "@/lib/server/request";
 import { getOrCreateUserDocument } from "@/lib/firestore/users";
 import { createProCheckoutSession, sanitizeAffiliateCode } from "@/lib/stripe/client";
 import { safeErrorMessage } from "@/lib/server/errors";
+import { routing, type Locale } from "@/i18n/routing";
 
 export const runtime = "nodejs";
+
+function localeFromBody(body: unknown): Locale {
+  const candidate =
+    body && typeof body === "object" && typeof (body as { locale?: unknown }).locale === "string"
+      ? (body as { locale: string }).locale
+      : "";
+  return routing.locales.includes(candidate as Locale) ? (candidate as Locale) : routing.defaultLocale;
+}
+
+function appOrigin(req: NextRequest): string {
+  return process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
+}
+
+function pricingReturnUrl(req: NextRequest, locale: Locale, billing: "success" | "cancelled"): string {
+  const url = new URL(`/${locale}/pricing`, appOrigin(req));
+  url.searchParams.set("billing", billing);
+  return url.toString();
+}
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const token = readBearerToken(req);
@@ -48,6 +67,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const affiliateCode = sanitizeAffiliateCode(
     body && typeof body === "object" ? (body as { affiliateCode?: unknown }).affiliateCode : undefined,
   );
+  const locale = localeFromBody(body);
 
   try {
     const url = await createProCheckoutSession({
@@ -55,6 +75,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       email: user.email,
       existingCustomerId: userDoc.stripeCustomerId,
       affiliateCode,
+      successUrl: pricingReturnUrl(req, locale, "success"),
+      cancelUrl: pricingReturnUrl(req, locale, "cancelled"),
     });
     return NextResponse.json({ url });
   } catch (err) {

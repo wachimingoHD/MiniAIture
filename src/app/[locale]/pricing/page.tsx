@@ -158,7 +158,7 @@ export default function PricingPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ locale }),
       });
       const payload = (await res.json()) as { url?: string; error?: string };
       if (!res.ok || !payload.url) {

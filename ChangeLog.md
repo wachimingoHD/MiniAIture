@@ -12,6 +12,15 @@ Format: `YYYY-MM-DD` headers (newest on top). Each entry is a bullet list. When 
 
 Entrada añadida tras corregir el caso real en el que una suscripción de Stripe completada en modo test no cambiaba el estado del usuario a PRO.
 
+### Corrección posterior del retorno de Checkout
+- Se corrigió un caso crítico observado después: el `success_url` podía volver a `/` o a una URL no localizada, mientras la sincronización cliente del checkout vivía en `src/app/[locale]/pricing/page.tsx`.
+- `src/app/api/billing/checkout/route.ts` ahora recibe el `locale` de la página de pricing y construye URLs de retorno explícitas:
+  - éxito: `/{locale}/pricing?billing=success&session_id={CHECKOUT_SESSION_ID}` (el `session_id` lo añade `src/lib/stripe/client.ts`);
+  - cancelación: `/{locale}/pricing?billing=cancelled`.
+- `src/app/[locale]/pricing/page.tsx` envía `locale` al crear la sesión de Checkout.
+- Esta corrección es importante porque, sin aterrizar en pricing tras Stripe, el pago podía completarse correctamente en Stripe test pero no ejecutarse el `POST /api/billing/sync` que actualiza Firestore.
+- Validación adicional: `npm run build` OK en local con rutas `/api/billing/sync`, `/api/billing/pricing` y `/api/webhooks/stripe` incluidas.
+
 ### Stripe y facturación
 - Se añadió una reconciliación explícita post-checkout:
   - `src/lib/stripe/client.ts` ahora incluye `session_id={CHECKOUT_SESSION_ID}` y `billing=success` en `success_url`, aunque `STRIPE_CHECKOUT_SUCCESS_URL` no los traiga.
