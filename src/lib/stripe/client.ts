@@ -57,6 +57,8 @@ export interface CreateCheckoutSessionInput {
   // produced a fresh customer and broke 1:1 user↔customer accounting.
   existingCustomerId?: string;
   affiliateCode?: string;
+  successUrl?: string;
+  cancelUrl?: string;
 }
 
 function withCheckoutSessionId(url: string): string {
@@ -101,8 +103,8 @@ export async function createProCheckoutSession(input: CreateCheckoutSessionInput
   const sessionConfig: Stripe.Checkout.SessionCreateParams = {
     mode: "subscription",
     line_items: [{ price: cfg.proPriceId, quantity: 1 }],
-    success_url: withCheckoutSessionId(runtime.billing.checkoutSuccessUrl),
-    cancel_url: runtime.billing.checkoutCancelUrl,
+    success_url: withCheckoutSessionId(input.successUrl ?? runtime.billing.checkoutSuccessUrl),
+    cancel_url: input.cancelUrl ?? runtime.billing.checkoutCancelUrl,
     client_reference_id: input.uid,
     metadata: {
       uid: input.uid,
