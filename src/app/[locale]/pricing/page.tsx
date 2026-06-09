@@ -24,6 +24,35 @@ interface PricingInfo {
   } | null;
 }
 
+interface BillingStatus {
+  plan?: "free" | "pro";
+  subscriptionStatus?: string | null;
+}
+
+interface SyncPayload {
+  ok?: boolean;
+  error?: string;
+  reason?: string;
+}
+
+const TRANSIENT_SYNC_REASONS = new Set(["missing_subscription", "checkout_not_complete"]);
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function clearCheckoutQueryParams(): void {
+  const params = new URLSearchParams(window.location.search);
+  params.delete("billing");
+  params.delete("session_id");
+  const nextQuery = params.toString();
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`,
+  );
+}
+
 function formatProPrice(
   info: PricingInfo | null,
   locale: string,
@@ -57,20 +86,19 @@ export default function PricingPage() {
   const checkoutSyncedRef = useRef(false);
   const alreadyPro = plan === "pro" && (subscriptionStatus === "active" || subscriptionStatus === "trialing");
 
-  const refreshBillingStatus = useCallback(async (token: string): Promise<void> => {
+  const refreshBillingStatus = useCallback(async (token: string): Promise<BillingStatus | null> => {
     try {
       const res = await fetch("/api/billing/status", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) return;
-      const payload = (await res.json()) as {
-        plan?: "free" | "pro";
-        subscriptionStatus?: string | null;
-      };
+      if (!res.ok) return null;
+      const payload = (await res.json()) as BillingStatus;
       setPlan(payload.plan ?? null);
       setSubscriptionStatus(payload.subscriptionStatus ?? null);
+      return payload;
     } catch {
       // ignore non-critical status read errors
+      return null;
     }
   }, []);
 
@@ -82,32 +110,50 @@ export default function PricingPage() {
 
     checkoutSyncedRef.current = true;
     try {
-      const res = await fetch("/api/billing/sync", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ sessionId }),
-      });
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        setError(payload.error ?? t("syncFailed"));
+      let lastPayload: SyncPayload | null = null;
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        const res = await fetch("/api/billing/sync", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ sessionId }),
+        });
+        const payload = (await res.json().catch(() => ({}))) as SyncPayload;
+        lastPayload = payload;
+        if (res.ok) {
+          clearCheckoutQueryParams();
+          setError(null);
+          return;
+        }
+
+        const reason = payload.reason ?? "";
+        if (!TRANSIENT_SYNC_REASONS.has(reason)) break;
+
+        const status = await refreshBillingStatus(token);
+        if (status?.plan === "pro" && (status.subscriptionStatus === "active" || status.subscriptionStatus === "trialing")) {
+          clearCheckoutQueryParams();
+          setError(null);
+          return;
+        }
+
+        if (attempt < 4) await wait(1200);
+      }
+
+      const status = await refreshBillingStatus(token);
+      if (status?.plan === "pro" && (status.subscriptionStatus === "active" || status.subscriptionStatus === "trialing")) {
+        clearCheckoutQueryParams();
+        setError(null);
         return;
       }
 
-      params.delete("billing");
-      params.delete("session_id");
-      const nextQuery = params.toString();
-      window.history.replaceState(
-        null,
-        "",
-        `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`,
-      );
+      const reason = lastPayload?.reason ?? "";
+      setError(TRANSIENT_SYNC_REASONS.has(reason) ? t("syncPending") : lastPayload?.error ?? t("syncFailed"));
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [t]);
+  }, [refreshBillingStatus, t]);
 
   useEffect(() => {
     const unsubscribe = subscribeToAuthState(async (user) => {
