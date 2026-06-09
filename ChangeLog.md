@@ -8,6 +8,37 @@ Format: `YYYY-MM-DD` headers (newest on top). Each entry is a bullet list. When 
 
 ---
 
+## 2026-06-10 - Defaults de generación Pro, créditos 550 y pricing 2K
+
+### Generación
+- `src/app/[locale]/generate/page.tsx` deja activado por defecto el modo **Alta calidad** para usuarios Pro.
+- La persistencia del formulario pasa de `miniaitura:genform:v1` a `miniaitura:genform:v2`.
+- Si existe un formulario legacy en `v1`, se migran contenido, estilo, referencias y opciones, pero `highQuality` se inicializa con el nuevo default `true` para evitar que sesiones antiguas mantengan el comportamiento anterior.
+
+### Créditos Pro
+- `src/lib/firestore/schema.ts` cambia `PRO_DAILY_CREDITS_DEFAULT` de 500 a 550.
+- `src/lib/config/runtime.test.ts` actualiza la expectativa del default a 550.
+- `.env.local` también se actualizó a `PRO_DAILY_CREDITS=550`; cualquier entorno de deploy con esta variable definida debe actualizarla manualmente o seguirá sobrescribiendo el default del código.
+- La página de pricing usa fallback visual de 550 créditos diarios si `/api/billing/pricing` no responde.
+
+### Pricing
+- Copy actualizado en `messages/es.json` y `messages/en.json`:
+  - Gratis: `Sin galería` / `No gallery` pasa a `Galería limitada` / `Limited gallery`.
+  - Pro: `Resolución hasta 4K` pasa a `Resolución hasta 2K`.
+- El precio Pro en `src/app/[locale]/pricing/page.tsx` ahora se muestra con tamaño destacado (`font-display`, 3xl/4xl, peso alto y color de acento fuerte).
+
+### Documentación
+- `MiniAItureDOC.md` deja de marcar los créditos Pro como pendiente 400/500 y documenta el modelo vigente: 550 créditos diarios + 3.000 mensuales.
+- La galería Free queda documentada como limitada a las últimas 30 generaciones.
+- Las referencias comerciales de Alta calidad pasan de upscale 4K a upscale 2K, manteniendo las referencias técnicas a 4K solo donde describen capacidades internas todavía existentes.
+
+### Validación
+- `npm run typecheck` OK.
+- `npm run test` OK: 10 archivos, 53 tests.
+- `npx eslint` OK sobre los archivos modificados de código.
+- `npm run build` OK. Persiste solo el warning conocido de Next 16 sobre renombrar `middleware` a `proxy`.
+- Verificación en navegador local de `/es/pricing`: muestra `Galería limitada`, `Resolución hasta 2K`, `550 créditos diarios y 3000 mensuales`, precio Pro destacado y sin errores de consola.
+
 ## 2026-06-09 - Fix Stripe post-checkout, copy de pricing y limpieza de perfil
 
 Entrada añadida tras corregir el caso real en el que una suscripción de Stripe completada en modo test no cambiaba el estado del usuario a PRO.

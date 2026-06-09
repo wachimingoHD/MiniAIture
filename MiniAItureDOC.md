@@ -729,7 +729,7 @@ Dirigido a creadores de contenido del nicho "YouTube con IA".
 - Motor: Gemini Flex obligatorio
 - Sin upscaling
 - Requiere registro con verificación de email para activación
-- Sin galería persistente — las imágenes no se guardan en servidor
+- Galería limitada: las imágenes se guardan en servidor, pero el plan Free solo muestra las últimas 30 generaciones en la galería personal.
 
 **Comportamiento ante fallos:**
 - Gemini Flex falla por **saturación de capacidad** (503/429): se devuelven los créditos al usuario y se informa de que los servidores están saturados. **No** se intenta fal.ai como alternativa de capacidad.
@@ -743,18 +743,10 @@ Dirigido a creadores de contenido del nicho "YouTube con IA".
 
 ### 13.3 Plan Pro
 
-`[PENDIENTE: elegir entre Opción A y Opción B. Fijar números exactos.]`
-
-**Opción A — Reseteo 24h desde primer uso:**
-- N créditos diarios que se resetean 24h después del primer gasto del día. Si no se usan, se pierden.
-- Pool mensual de reserva: M créditos, no se regeneran hasta la siguiente renovación.
-- `[PENDIENTE: N = 400 o 500 créditos diarios. M = 2.000 o 3.000 créditos mensuales.]`
-- Resultado aproximado: 4-5 imágenes/día desde créditos diarios + 20-30 adicionales desde pool. Máximo mensual total: ~100-200 imágenes.
-
-**Opción B — Recarga escalonada cada 5h:**
-- Cada 5 horas el usuario recibe 100 créditos (máx 4-5 recargas/día = mismo techo diario que Opción A).
-- Pool mensual de reserva: igual que Opción A.
-- Ventaja frente a Opción A: distribuye el uso a lo largo del día, reduce spikes de coste de API, genera más puntos de retorno diario y percepción de beneficio continuo.
+**Modelo vigente — Reseteo 24h desde primer uso:**
+- 550 créditos diarios que se resetean 24h después del primer gasto del día. Si no se usan, se pierden.
+- Pool mensual de reserva: 3.000 créditos, no se regeneran hasta la siguiente renovación.
+- Resultado aproximado: 5 imágenes/día desde créditos diarios + 30 adicionales desde pool. Máximo mensual total aproximado: ~180 imágenes, dependiendo de modos activos.
 
 **Comportamiento Pro ante fallos de Gemini:**
 - Fallo por **saturación de Flex**: reintento automático en Standard (diferencia de coste la asume la plataforma; el usuario descuenta siempre 100 créditos).
@@ -779,7 +771,7 @@ El reseteo es **relativo por usuario**, no global. No hay cron job que recorra t
 |---|---|---|
 | **Base** | Generación 512px vía Gemini Flex + upscaling a 1K vía fal.ai | 100 créditos |
 | **Calidad media** | Generación nativa 1K vía Gemini | 100 créditos |
-| **Alta calidad** | Generación nativa 1K vía Gemini + upscaling a 2K o 4K vía fal.ai | 100 créditos |
+| **Alta calidad** | Generación nativa 1K vía Gemini + upscaling a 2K vía fal.ai | 100 créditos |
 
 > El coste en créditos es igual en los tres tiers. La diferencia es el coste real de API que absorbe la plataforma. El tier Base cuesta ~0.023€ (Flex 512px) + ~0.003€ (upscale) = ~0.026€. El tier Calidad media cuesta ~0.067€ (Standard 1K). Validar que el margen del precio Pro cubre todos los tiers antes de activarlos.
 
@@ -939,7 +931,7 @@ users/{uid}
 
 | Plan | Galería |
 |---|---|
-| **Free** | Sin galería. Las imágenes no se guardan en servidor. El historial local (IndexedDB) persiste solo en el dispositivo. |
+| **Free** | Galería limitada a las últimas 30 generaciones en la galería personal. El resto puede conservarse en servidor, pero no se pagina ni se muestra para Free. |
 | **Pro** | Array `gallery` en Firestore con hasta 200 entradas. Al superar el límite, se elimina la entrada más antigua (FIFO). Las imágenes se almacenan en Cloudflare R2; Firestore guarda solo la URL de referencia. |
 
 **Por qué galería completa para Pro y no solo las últimas 3:** los creadores de YouTube generan múltiples variantes por proyecto y necesitan comparar y reutilizar imágenes anteriores. Limitar a 3 generaría churn. El coste real es despreciable: ~50MB por usuario activo en R2, con egress gratuito en Cloudflare.
@@ -1076,7 +1068,7 @@ La web estará **en inglés** como idioma principal y único en el MVP. Razones:
 - El historial local (IndexedDB) se pierde si el usuario cambia de dispositivo o limpia datos. La galería Pro en servidor resuelve esto para usuarios de pago, pero no para Free.
 - El fallback a fal usa el `input` original (si hubo retry Google standard, no modifica payload salvo flex internamente en Google).
 - El programa de afiliados con 10% descuento + 10% comisión + Stripe ~3% reduce el margen efectivo en ~23% en usuarios afiliados. Si el canal de adquisición principal son afiliados, la mayoría del volumen inicial opera con ese margen reducido. El precio Pro debe calcularse con esto en cuenta.
-- Los tiers de calidad Pro (especialmente "Alta calidad" con generación 1K + upscale 4K) tienen un coste de API significativamente mayor que el tier Base. Validar margen antes de activarlos.
+- Los tiers de calidad Pro (especialmente "Alta calidad" con generación 1K + upscale 2K) tienen un coste de API significativamente mayor que el tier Base. Validar margen antes de activarlos.
 - Las transacciones atómicas de Firestore son obligatorias para el descuento de créditos. Sin ellas, requests simultáneos pueden generar con créditos negativos o duplicar generaciones.
 - La verificación de firma de webhooks de Stripe es obligatoria. Sin ella, cualquiera puede activar plan Pro con un POST falso.
 - La política de retención de imágenes R2 al cancelar suscripción Pro está sin definir.

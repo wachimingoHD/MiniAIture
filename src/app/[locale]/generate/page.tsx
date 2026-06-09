@@ -38,8 +38,10 @@ import {
 type StyleSource = { kind: "custom" | "preset" | "gallery"; id: string | null; nicho: string | null; base: string };
 const EMPTY_STYLE: StyleSource = { kind: "custom", id: null, nicho: null, base: "" };
 
-const FORM_STORAGE_KEY = "miniaitura:genform:v1";
+const LEGACY_FORM_STORAGE_KEY = "miniaitura:genform:v1";
+const FORM_STORAGE_KEY = "miniaitura:genform:v2";
 const PREFILL_STORAGE_KEY = "miniaitura:prefill";
+const HIGH_QUALITY_DEFAULT = true;
 
 // Cache a nivel de módulo para que la precarga sobreviva al doble montaje de
 // React StrictMode en desarrollo (que resetea el estado del componente). En el
@@ -101,7 +103,7 @@ export default function HomePage() {
 
   // Opciones PRO (toggles). FREE las ignora (512 + cola forzada).
   const [saver, setSaver] = useState(true); // ahorro (cola baja prioridad) — marcado por defecto
-  const [highQuality, setHighQuality] = useState(false); // genera nativo en 1K
+  const [highQuality, setHighQuality] = useState(HIGH_QUALITY_DEFAULT); // genera nativo en 1K
   const [highRes, setHighRes] = useState(false); // resultado final 2K
 
   // Campos del formulario (doc §4)
@@ -163,14 +165,21 @@ export default function HomePage() {
     /* eslint-disable react-hooks/set-state-in-effect -- hidratación desde sessionStorage tras el primer render (evita mismatch SSR) */
     try {
       const raw = sessionStorage.getItem(FORM_STORAGE_KEY);
-      if (raw) {
-        const s = JSON.parse(raw) as Partial<PersistedForm>;
+      const legacyRaw = raw ? null : sessionStorage.getItem(LEGACY_FORM_STORAGE_KEY);
+      const loadedLegacyForm = !raw && !!legacyRaw;
+      const storedForm = raw ?? legacyRaw;
+      if (storedForm) {
+        const s = JSON.parse(storedForm) as Partial<PersistedForm>;
         if (s.params) setParams(s.params);
         if (typeof s.videoTitle === "string") setVideoTitle(s.videoTitle);
         if (typeof s.styleText === "string") setStyleText(s.styleText);
         if (s.styleSource) setStyleSource(s.styleSource);
         if (typeof s.saver === "boolean") setSaver(s.saver);
-        if (typeof s.highQuality === "boolean") setHighQuality(s.highQuality);
+        if (!loadedLegacyForm && typeof s.highQuality === "boolean") {
+          setHighQuality(s.highQuality);
+        } else {
+          setHighQuality(HIGH_QUALITY_DEFAULT);
+        }
         if (typeof s.highRes === "boolean") setHighRes(s.highRes);
         if (Array.isArray(s.referenceImages)) {
           setReferenceImages(
@@ -181,6 +190,7 @@ export default function HomePage() {
             })),
           );
         }
+        if (loadedLegacyForm) sessionStorage.removeItem(LEGACY_FORM_STORAGE_KEY);
       }
 
       // Precarga desde la galería pública (botones "Usar contenido/estilo/ambos").
@@ -388,7 +398,7 @@ export default function HomePage() {
     }
     setReferenceImages(next);
     setReferenceError(error);
-  }, [referenceImages]);
+  }, [referenceImages, t]);
 
   // Pide a la IA (Gemini 2.5 Flash) una dirección de estilo a partir del título
   // y el contenido. Cuesta 1 crédito (se reembolsa en el servidor si falla).
@@ -910,7 +920,7 @@ function ResultLightbox({
   const total = images.length;
 
   useEffect(() => {
-    setMounted(true);
+    const frame = requestAnimationFrame(() => setMounted(true));
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
       if (e.key === "ArrowRight") setCurrent((c) => (c + 1) % total);
@@ -920,6 +930,7 @@ function ResultLightbox({
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
+      cancelAnimationFrame(frame);
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
     };
