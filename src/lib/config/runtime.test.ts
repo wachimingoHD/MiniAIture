@@ -13,7 +13,7 @@ describe("runtime config", () => {
 
   it("uses defaults when env is missing", () => {
     const cfg = getRuntimeConfig();
-    expect(cfg.credits.proDaily).toBe(500);
+    expect(cfg.credits.proDaily).toBe(550);
     expect(cfg.security.requireAuthForGenerate).toBe(true);
   });
 

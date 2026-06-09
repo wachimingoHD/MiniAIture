@@ -248,13 +248,13 @@ export default function PricingPage() {
 
         <article className="rounded-lg border border-[var(--color-accent)] bg-[var(--color-accent-soft)] p-5">
           <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">{t("pro")}</h2>
-          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+          <p className="mt-3 font-display text-3xl font-extrabold leading-none text-[var(--color-accent-strong)] md:text-4xl">
             {formatProPrice(pricingInfo, locale, t("proPriceFallback"), t("perMonth"), t("perYear"))}
           </p>
           <ul className="mt-4 space-y-2 text-sm text-[var(--color-text-secondary)]">
             <li>
               {t("proFeature1", {
-                daily: pricingInfo?.credits.proDaily ?? 500,
+                daily: pricingInfo?.credits.proDaily ?? 550,
                 monthly: pricingInfo?.credits.proMonthly ?? 3000,
               })}
             </li>

@@ -78,10 +78,8 @@ export const MAX_PRO_GALLERY_ENTRIES = 200;
 
 export const FREE_DAILY_CREDITS = 100;
 
-// Pro plan numbers — see MiniAItureDOC.md section 13.3 [PENDIENTE].
-// Defaults below are placeholders to keep code valid; actual values must be
-// chosen before launch.
-export const PRO_DAILY_CREDITS_DEFAULT = 500;
+// Pro plan defaults. `PRO_DAILY_CREDITS` can still override this at runtime.
+export const PRO_DAILY_CREDITS_DEFAULT = 550;
 export const PRO_MONTHLY_POOL_DEFAULT = 3000;
 
 export const CREDITS_PER_IMAGE = 100;
