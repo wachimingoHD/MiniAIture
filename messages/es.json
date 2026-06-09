@@ -89,7 +89,8 @@
     "errorLabel": "Error:",
     "signInRequired": "Hay que iniciar sesión antes de empezar el checkout.",
     "checkoutFailed": "No se ha podido crear la sesión de checkout.",
-    "syncFailed": "No se pudo sincronizar el pago. Si el cargo aparece en Stripe, revisa el webhook o recarga en unos segundos."
+    "syncFailed": "No se pudo sincronizar el pago. Si el cargo aparece en Stripe, revisa el webhook o recarga en unos segundos.",
+    "syncPending": "El pago se ha completado, pero tu cuenta aún se está actualizando. Recarga en unos segundos si no aparece como Pro."
   },
   "galleryPublic": {
     "meta": {

@@ -34,6 +34,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const result = await syncCheckoutSessionToUser(db, sessionId, user.uid);
     if (!result.ok) {
+      console.warn("Stripe checkout sync did not complete", {
+        uid: user.uid,
+        sessionId,
+        reason: result.reason,
+        subscriptionId: result.subscriptionId,
+      });
       const status = result.reason === "uid_mismatch" ? 403 : 409;
       return NextResponse.json(
         { error: "Checkout session could not be synchronized.", reason: result.reason },

@@ -10,6 +10,15 @@ Format: `YYYY-MM-DD` headers (newest on top). Each entry is a bullet list. When 
 
 ## 2026-06-10 - Defaults de generación Pro, créditos 550 y pricing 2K
 
+### Investigación posterior: error transitorio de sincronización de Checkout
+- Se investigó el aviso temporal en pricing: `Checkout session could not be synchronized.`
+- Origen: `POST /api/billing/sync` devolvía 409 cuando la vuelta desde Stripe llegaba antes de que la Checkout Session/subscription estuviera lista para aplicarse (`missing_subscription` o `checkout_not_complete`). Si el webhook de Stripe entraba segundos después, el usuario quedaba Pro y el error desaparecía en la siguiente carga, por eso no era necesariamente un fallo permanente de pago.
+- `src/app/[locale]/pricing/page.tsx` ahora reintenta hasta 4 veces la sincronización para esos motivos transitorios, con pausas cortas.
+- Si durante esos reintentos `/api/billing/status` ya indica usuario Pro activo/trialing, la página limpia `billing/session_id` de la URL y no muestra error.
+- Solo se mantiene error visible cuando el problema no parece transitorio (por ejemplo `uid_mismatch`) o si tras varios intentos el usuario sigue sin estar Pro.
+- `src/app/api/billing/sync/route.ts` registra `console.warn` con `uid`, `sessionId`, `reason` y `subscriptionId` cuando no puede sincronizar, para que futuros casos tengan diagnóstico en logs de deploy.
+- Traducciones nuevas: `pricing.syncPending` en `messages/es.json` y `messages/en.json`.
+
 ### Generación
 - `src/app/[locale]/generate/page.tsx` deja activado por defecto el modo **Alta calidad** para usuarios Pro.
 - La persistencia del formulario pasa de `miniaitura:genform:v1` a `miniaitura:genform:v2`.

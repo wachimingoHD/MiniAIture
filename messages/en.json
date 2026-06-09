@@ -89,7 +89,8 @@
     "errorLabel": "Error:",
     "signInRequired": "Sign in is required before starting checkout.",
     "checkoutFailed": "Unable to create checkout session.",
-    "syncFailed": "Could not synchronize the payment. If the charge appears in Stripe, check the webhook or refresh in a few seconds."
+    "syncFailed": "Could not synchronize the payment. If the charge appears in Stripe, check the webhook or refresh in a few seconds.",
+    "syncPending": "The payment is complete, but your account is still updating. Refresh in a few seconds if it does not appear as Pro."
   },
   "galleryPublic": {
     "meta": {
