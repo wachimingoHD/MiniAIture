@@ -96,6 +96,63 @@ describe("/api/webhooks/stripe smoke", () => {
     expect(eventLockSet).toHaveBeenCalled();
   });
 
+  it("syncs a completed checkout session event", async () => {
+    const eventLockCreate = vi.fn(async () => undefined);
+    const eventLockSet = vi.fn(async () => undefined);
+    const syncCheckoutSessionToUser = vi.fn(async () => ({ ok: true, uid: "user_123" }));
+    const dbMock = {
+      collection: (name: string) => {
+        if (name === "stripe_processed_events") {
+          return {
+            doc: () => ({
+              create: eventLockCreate,
+              set: eventLockSet,
+              delete: vi.fn(async () => undefined),
+            }),
+          };
+        }
+        return {};
+      },
+    };
+
+    vi.doMock("@/lib/stripe/client", () => ({
+      verifyWebhookSignature: vi.fn(() => ({
+        id: "evt_checkout_1",
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_test_123",
+            mode: "subscription",
+            metadata: { uid: "user_123" },
+            subscription: "sub_123",
+          },
+        },
+      })),
+    }));
+    vi.doMock("@/lib/stripe/subscription-sync", () => ({
+      syncCheckoutSessionToUser,
+    }));
+    vi.doMock("@/lib/auth/firebase-admin", () => ({
+      adminFirestore: vi.fn(() => dbMock),
+    }));
+
+    const { POST } = await import("./route");
+    const req = new NextRequest("http://localhost/api/webhooks/stripe", {
+      method: "POST",
+      headers: { "stripe-signature": "good" },
+      body: "{}",
+    });
+    const res = await POST(req);
+
+    expect(res.status).toBe(200);
+    expect(syncCheckoutSessionToUser).toHaveBeenCalledWith(
+      dbMock,
+      expect.objectContaining({ id: "cs_test_123" }),
+    );
+    expect(eventLockCreate).toHaveBeenCalled();
+    expect(eventLockSet).toHaveBeenCalled();
+  });
+
   it("dedups an already-processed event", async () => {
     const setSpy = vi.fn(async () => undefined);
     // create() rejecting simulates the doc already existing.

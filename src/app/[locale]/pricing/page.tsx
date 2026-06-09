@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import PageHeader from "@/components/ui/PageHeader";
 import {
   getCurrentIdToken,
@@ -10,35 +10,54 @@ import {
   subscribeToAuthState,
 } from "@/lib/auth/firebase-client";
 
+interface PricingInfo {
+  credits: {
+    freeDaily: number;
+    proDaily: number;
+    proMonthly: number;
+  };
+  proPrice: {
+    unitAmountMinor: number | null;
+    currency: string;
+    interval: "day" | "week" | "month" | "year" | null;
+    intervalCount: number | null;
+  } | null;
+}
+
+function formatProPrice(
+  info: PricingInfo | null,
+  locale: string,
+  fallback: string,
+  perMonth: string,
+  perYear: string,
+): string {
+  const price = info?.proPrice;
+  if (!price || price.unitAmountMinor == null) return fallback;
+
+  const amount = price.unitAmountMinor / 100;
+  const formatted = new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: price.currency.toUpperCase(),
+  }).format(amount);
+  const period = price.interval === "year" ? perYear : perMonth;
+  return `${formatted} / ${period}`;
+}
+
 export default function PricingPage() {
   const t = useTranslations("pricing");
   const tAuth = useTranslations("auth");
+  const locale = useLocale();
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [plan, setPlan] = useState<"free" | "pro" | null>(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
+  const [pricingInfo, setPricingInfo] = useState<PricingInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const checkoutSyncedRef = useRef(false);
   const alreadyPro = plan === "pro" && (subscriptionStatus === "active" || subscriptionStatus === "trialing");
 
-  useEffect(() => {
-    const unsubscribe = subscribeToAuthState(async (user) => {
-      if (!user) {
-        setAuthEmail(null);
-        setAuthToken(null);
-        setPlan(null);
-        setSubscriptionStatus(null);
-        return;
-      }
-      setAuthEmail(user.email ?? "signed-in-user");
-      const token = await user.getIdToken();
-      setAuthToken(token);
-      await refreshBillingStatus(token);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  async function refreshBillingStatus(token: string): Promise<void> {
+  const refreshBillingStatus = useCallback(async (token: string): Promise<void> => {
     try {
       const res = await fetch("/api/billing/status", {
         headers: { Authorization: `Bearer ${token}` },
@@ -53,7 +72,76 @@ export default function PricingPage() {
     } catch {
       // ignore non-critical status read errors
     }
-  }
+  }, []);
+
+  const syncCheckoutIfNeeded = useCallback(async (token: string): Promise<void> => {
+    if (checkoutSyncedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get("session_id");
+    if (params.get("billing") !== "success" || !sessionId) return;
+
+    checkoutSyncedRef.current = true;
+    try {
+      const res = await fetch("/api/billing/sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ sessionId }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(payload.error ?? t("syncFailed"));
+        return;
+      }
+
+      params.delete("billing");
+      params.delete("session_id");
+      const nextQuery = params.toString();
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`,
+      );
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthState(async (user) => {
+      if (!user) {
+        setAuthEmail(null);
+        setAuthToken(null);
+        setPlan(null);
+        setSubscriptionStatus(null);
+        return;
+      }
+      setAuthEmail(user.email ?? "signed-in-user");
+      const token = await user.getIdToken();
+      setAuthToken(token);
+      await syncCheckoutIfNeeded(token);
+      await refreshBillingStatus(token);
+    });
+    return () => unsubscribe();
+  }, [refreshBillingStatus, syncCheckoutIfNeeded]);
+
+  useEffect(() => {
+    let alive = true;
+    void fetch("/api/billing/pricing")
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return (await res.json()) as PricingInfo;
+      })
+      .then((payload) => {
+        if (alive && payload) setPricingInfo(payload);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   async function startCheckout(): Promise<void> {
     setBusy(true);
@@ -130,6 +218,7 @@ export default function PricingPage() {
                   const token = await user.getIdToken();
                   setAuthToken(token);
                   setAuthEmail(user.email ?? "signed-in-user");
+                  await syncCheckoutIfNeeded(token);
                   await refreshBillingStatus(token);
                 } catch (err) {
                   setError((err as Error).message);
@@ -150,7 +239,7 @@ export default function PricingPage() {
           <h2 className="text-lg font-semibold">{t("free")}</h2>
           <p className="mt-1 text-sm text-[var(--color-text-muted)]">{t("freePrice")}</p>
           <ul className="mt-4 space-y-2 text-sm text-[var(--color-text-secondary)]">
-            <li>{t("freeFeature1")}</li>
+            <li>{t("freeFeature1", { daily: pricingInfo?.credits.freeDaily ?? 100 })}</li>
             <li>{t("freeFeature2")}</li>
             <li>{t("freeFeature3")}</li>
             <li>{t("freeFeature4")}</li>
@@ -160,13 +249,19 @@ export default function PricingPage() {
         <article className="rounded-lg border border-[var(--color-accent)] bg-[var(--color-accent-soft)] p-5">
           <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">{t("pro")}</h2>
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            {t("proPrice")}
+            {formatProPrice(pricingInfo, locale, t("proPriceFallback"), t("perMonth"), t("perYear"))}
           </p>
           <ul className="mt-4 space-y-2 text-sm text-[var(--color-text-secondary)]">
-            <li>{t("proFeature1")}</li>
+            <li>
+              {t("proFeature1", {
+                daily: pricingInfo?.credits.proDaily ?? 500,
+                monthly: pricingInfo?.credits.proMonthly ?? 3000,
+              })}
+            </li>
             <li>{t("proFeature2")}</li>
             <li>{t("proFeature3")}</li>
             <li>{t("proFeature4")}</li>
+            <li>{t("proFeature5")}</li>
           </ul>
           <button
             type="button"

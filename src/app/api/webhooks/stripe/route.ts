@@ -7,6 +7,7 @@ import type { UserDocument } from "@/lib/firestore/schema";
 import type { DocumentReference, Firestore } from "firebase-admin/firestore";
 import { FieldValue } from "firebase-admin/firestore";
 import { safeErrorMessage } from "@/lib/server/errors";
+import { syncCheckoutSessionToUser } from "@/lib/stripe/subscription-sync";
 
 export const runtime = "nodejs";
 
@@ -233,6 +234,9 @@ async function onInvoiceFailed(db: Firestore, invoice: Stripe.Invoice): Promise<
 
 async function dispatch(db: Firestore, event: Stripe.Event): Promise<void> {
   switch (event.type) {
+    case "checkout.session.completed":
+      await syncCheckoutSessionToUser(db, event.data.object as Stripe.Checkout.Session);
+      return;
     case "customer.subscription.created":
     case "customer.subscription.updated":
       await onSubscriptionCreated(db, event.data.object as Stripe.Subscription);

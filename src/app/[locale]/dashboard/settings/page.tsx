@@ -15,18 +15,11 @@ interface Credits {
   monthly: number;
   monthlyResetAt: string;
 }
-interface Stats {
-  totalImagesGenerated?: number;
-  googleGenerations?: number;
-  falGenerations?: number;
-  monthsSubscribed?: number;
-}
 interface Profile {
   displayName: string | null;
   email: string | null;
   plan: "free" | "pro";
   credits: Credits;
-  stats: Stats | null;
   subscriptionStatus: string | null;
   subscriptionEnd: string | null;
   cancelAtPeriodEnd: boolean;
@@ -237,27 +230,6 @@ export default function SettingsPage() {
               </div>
             )}
           </section>
-
-          {/* Stats */}
-          {profile.stats && (
-            <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-5">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">{t("usage")}</h2>
-              <div className="mt-3 grid grid-cols-3 gap-3 text-center">
-                <div className="rounded-xl bg-[var(--color-bg-panel-2)] p-3">
-                  <p className="text-xl font-bold">{profile.stats.totalImagesGenerated ?? 0}</p>
-                  <p className="text-[11px] text-[var(--color-text-muted)]">{t("statThumbnails")}</p>
-                </div>
-                <div className="rounded-xl bg-[var(--color-bg-panel-2)] p-3">
-                  <p className="text-xl font-bold">{(profile.stats.googleGenerations ?? 0) + (profile.stats.falGenerations ?? 0)}</p>
-                  <p className="text-[11px] text-[var(--color-text-muted)]">{t("statGenerations")}</p>
-                </div>
-                <div className="rounded-xl bg-[var(--color-bg-panel-2)] p-3">
-                  <p className="text-xl font-bold">{profile.stats.monthsSubscribed ?? 0}</p>
-                  <p className="text-[11px] text-[var(--color-text-muted)]">{t("statMonthsPro")}</p>
-                </div>
-              </div>
-            </section>
-          )}
 
           {/* Cambiar nombre */}
           <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-5">
