@@ -72,8 +72,9 @@ try {
   console.log(`Coupon creado: ${coupon.id}`);
 }
 
-// ---- 2) promotion code ----
-const existing = await stripe.promotionCodes.list({ code, limit: 1 });
+// ---- 2) promotion code (solo se reutiliza si sigue ACTIVO: al borrar un
+// cupón, Stripe desactiva sus códigos y hay que crear uno nuevo) ----
+const existing = await stripe.promotionCodes.list({ code, active: true, limit: 1 });
 let promo = existing.data[0];
 if (promo) {
   console.log(`Promotion code ya existía: ${promo.id} (${promo.code})`);

@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminFirestore, verifyIdToken } from "@/lib/auth/firebase-admin";
 import { readBearerToken } from "@/lib/server/request";
 import { getOrCreateUserDocument } from "@/lib/firestore/users";
-import { createProCheckoutSession, findOpenSubscription } from "@/lib/stripe/client";
+import {
+  createProCheckoutSession,
+  findActivePromotionCodeByCode,
+  findOpenSubscription,
+} from "@/lib/stripe/client";
 import { getActiveAffiliate, normalizeAffiliateCode } from "@/lib/firestore/affiliates";
 import { applyStripeSubscriptionToUser } from "@/lib/stripe/subscription-sync";
 import { safeErrorMessage } from "@/lib/server/errors";
@@ -113,6 +117,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
     affiliateCode = affiliate.code;
     promotionCodeId = affiliate.stripePromotionCodeId || undefined;
+
+    // Robustez ante docs creados a mano: si el id guardado no es un promotion
+    // code de Stripe ("promo_..."), lo resolvemos por su texto y auto-reparamos
+    // el doc. Si tampoco existe activo en Stripe, mejor avisar que cobrar el
+    // precio completo en silencio.
+    if (!promotionCodeId?.startsWith("promo_")) {
+      try {
+        promotionCodeId = (await findActivePromotionCodeByCode(affiliate.code)) ?? undefined;
+      } catch {
+        promotionCodeId = undefined;
+      }
+      if (!promotionCodeId) {
+        return NextResponse.json(
+          { error: "invalid_affiliate_code", reason: "invalid_affiliate_code" },
+          { status: 400 },
+        );
+      }
+      await db
+        .collection("affiliates")
+        .doc(affiliate.code)
+        .set({ stripePromotionCodeId: promotionCodeId }, { merge: true });
+    }
   }
 
   try {

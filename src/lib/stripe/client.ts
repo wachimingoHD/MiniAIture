@@ -157,6 +157,16 @@ export async function retrieveSubscription(subscriptionId: string): Promise<Stri
   return stripe.subscriptions.retrieve(subscriptionId);
 }
 
+// Busca por su texto un promotion code ACTIVO en Stripe (p. ej. "R241").
+// Red de seguridad para cuando el doc de `affiliates` guarda un id incorrecto
+// (códigos creados a mano) o el promo original fue desactivado.
+export async function findActivePromotionCodeByCode(code: string): Promise<string | null> {
+  const stripe = getStripeClient();
+  if (!stripe) return null;
+  const list = await stripe.promotionCodes.list({ code, active: true, limit: 1 });
+  return list.data[0]?.id ?? null;
+}
+
 // Busca una suscripción "abierta" (cualquier estado que no sea canceled /
 // incomplete_expired) del customer. Es la fuente de verdad para bloquear un
 // segundo checkout aunque Firestore esté desincronizado.
