@@ -8,6 +8,75 @@ Format: `YYYY-MM-DD` headers (newest on top). Each entry is a bullet list. When 
 
 ---
 
+## 2026-06-10 - Sugerencias IA con deshacer, formato vertical y ajustes de Comunidad/Generador
+
+Entrada añadida tras cambios recientes de Claude y esta pasada de Codex sobre el flujo de generación.
+
+### Generador: sugerencias IA y deshacer
+- `src/app/[locale]/generate/page.tsx` deja de llamar a los endpoints antiguos separados `/api/suggest-content` y `/api/suggest-style` desde la UI principal. Ahora usa el endpoint unificado `POST /api/suggest-field` con `field = "content" | "style"`.
+- El endpoint unificado ya existía en el worktree reciente junto con `src/lib/prompts/field-suggestion.ts`; esta pasada lo terminó de integrar en frontend y lo endureció.
+- Cada campo mantiene historial independiente de salidas IA:
+  - si la IA reemplaza `Contenido`, se guarda el texto anterior y el valor generado;
+  - si la IA reemplaza `Estilo`, se guardan el texto anterior y su `styleSource` para restaurar también el origen correcto.
+- `Ctrl/Cmd+Z` en cada textarea solo intercepta el deshacer cuando el valor actual coincide con una salida de IA. Si el usuario escribió después, se deja actuar al historial nativo del textarea.
+- Se añadió un botón de deshacer por campo, solo icono (`↶`), a la derecha del botón de sugerencia IA. Usa `aria-label`/`title` traducidos.
+- Al recibir prefill desde Comunidad (`miniaitura:prefill`) se limpian los historiales IA para que un valor traído de galería no pueda deshacer a una sugerencia antigua.
+
+### Bug de prefill desde Comunidad
+- Se corrigió una carrera de `pendingPrefill` en `generate/page.tsx`: la cache de módulo pensada para React StrictMode podía sobrevivir a un montaje real no-StrictMode y reaplicar una precarga vieja en una navegación posterior.
+- Ahora `sessionStorage` nuevo siempre gana a `pendingPrefill`; la cache se borra después de un tick si no la consume el segundo montaje de StrictMode.
+- Esto aborda el bug observado donde "Usar contenido", "Usar estilo" o "Usar ambos" redirigía a `/generate` pero la pantalla seguía mostrando el formulario persistido anterior hasta recargar.
+
+### Endpoint de sugerencias IA
+- `src/app/api/suggest-field/route.ts` queda como endpoint robusto para ambos campos:
+  - exige usuario autenticado;
+  - respeta App Check si está activado;
+  - exige plan Pro server-side;
+  - cobra `FIELD_SUGGESTION_CREDITS = 1`;
+  - reembolsa si no hay sugerencia válida o si ocurre error;
+  - incrementa `stats.styleSuggestions` o `stats.contentSuggestions` en éxito.
+- Para reducir el fallo aleatorio del sugeridor antiguo, prueba modelos de texto configurados/fallback y hace hasta 2 intentos por modelo.
+- `maxDuration` sube a 60s porque el fallback por varios modelos puede superar los 30s anteriores.
+- La UI acepta tanto la forma nueva `{ text }` como la forma legacy `{ suggestion }`.
+
+### Formato horizontal/vertical
+- El panel de opciones de `/generate` añade selector persistente:
+  - Horizontal `16:9` por defecto.
+  - Vertical `9:16`.
+- El valor vive en `params.aspect_ratio`, por lo que se guarda con el resto del formulario en `miniaitura:genform:v2` y viaja al backend en la misma petición.
+- Al hidratar formularios antiguos, cualquier aspect ratio distinto de `9:16` se normaliza a `16:9` para mantener solo las dos opciones de producto actuales.
+- `src/app/api/generate/route.ts` pasa `params.aspect_ratio` validado al enhancer.
+- `src/lib/services/prompt-enhancer.ts` añade `aspectRatio` a `EnhancerInput`:
+  - el mensaje del usuario incluye `OUTPUT FORMAT: horizontal 16:9` o `vertical 9:16`;
+  - el system prompt se adapta sustituyendo el sufijo final `16:9 aspect ratio...` por `9:16 aspect ratio...` cuando toca;
+  - el fallback determinista también respeta `9:16`.
+
+### Comunidad: detalle público
+- `src/app/[locale]/gallery/[generationId]/page.tsx` ya no muestra un `figcaption` bajo la imagen con contenido/estilo duplicado.
+- En ese espacio bajo la imagen se movieron:
+  - botones `Usar contenido`, `Usar estilo`, `Usar ambos`;
+  - nicho, si existe;
+  - contador `styleUsedTimes`.
+- El panel lateral conserva las secciones completas de `Contenido` y `Estilo`, evitando la repetición visual y el texto cortado bajo la imagen.
+
+### Resultado generado
+- En `/generate`, si solo hay una imagen generada, el resultado ya no se queda como media columna (`sm:grid-cols-2`).
+- La figura única se centra y puede ocupar todo el ancho útil del panel (`max-w-5xl`, `w-full`, `object-contain`, `max-h-[72vh]`), manteniéndose dentro de pantalla.
+
+### Traducciones
+- Nuevas claves en `messages/es.json` y `messages/en.json`:
+  - `generate.undoContentSuggestion`
+  - `generate.undoStyleSuggestion`
+  - `generate.formatLabel`
+  - `generate.formatHorizontal`
+  - `generate.formatVertical`
+
+### Validación
+- `npm run typecheck` OK.
+- `npm run test` OK: 10 archivos, 54 tests.
+- `npx eslint` OK sobre archivos modificados de código.
+- `npm run build` OK. Persiste solo el warning conocido de Next 16: la convención `middleware` está deprecada y recomiendan `proxy`.
+
 ## 2026-06-10 - Defaults de generación Pro, créditos 550 y pricing 2K
 
 ### Investigación posterior: error transitorio de sincronización de Checkout

@@ -134,6 +134,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         referenceImages: enhancerReferenceImages,
         referenceInstructions: enhancerFields.referenceInstructions,
         stylePrompt: enhancerFields.stylePrompt,
+        aspectRatio: params.aspect_ratio,
       },
       { apiKey: geminiKey },
     );

@@ -93,7 +93,6 @@ export default async function GenerationDetailPage({
   if (!gen) notFound();
 
   const authorName = await loadAuthorName(gen.userId);
-  const isCustom = gen.styleType === "custom";
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -127,9 +126,13 @@ export default async function GenerationDetailPage({
               className="object-cover"
             />
           </div>
-          <figcaption className="p-3 text-sm text-[var(--color-text-secondary)]">
-            {isCustom && gen.stylePrompt ? gen.stylePrompt : shortText(gen.userPrompt, 160)}
-          </figcaption>
+          <div className="border-t border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-3">
+            <UseInGenerator generationId={gen.id} content={gen.userPrompt} style={gen.stylePrompt || null} />
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--color-text-muted)]">
+              {gen.nicho && <span>{t("niche", { nicho: gen.nicho })}</span>}
+              <span>{t("styleUsedTimes", { count: gen.timesStyleCopied })}</span>
+            </div>
+          </div>
         </figure>
 
         <aside className="space-y-4 text-sm">
@@ -158,16 +161,6 @@ export default async function GenerationDetailPage({
             </div>
           )}
 
-          {/* Usar contenido / estilo / ambos en el generador (precarga el form) */}
-          <UseInGenerator generationId={gen.id} content={gen.userPrompt} style={gen.stylePrompt || null} />
-
-          {gen.nicho && (
-            <p className="text-[var(--color-text-muted)]">{t("niche", { nicho: gen.nicho })}</p>
-          )}
-
-          <p className="text-[var(--color-text-muted)]">
-            {t("styleUsedTimes", { count: gen.timesStyleCopied })}
-          </p>
         </aside>
       </article>
     </main>

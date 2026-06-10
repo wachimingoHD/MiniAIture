@@ -13,6 +13,7 @@ const base: EnhancerInput = {
   referenceImages: [],
   referenceInstructions: null,
   stylePrompt: "Finance pro style, blue and white",
+  aspectRatio: "16:9",
 };
 
 describe("buildUserMessage (doc §3.2)", () => {
@@ -21,6 +22,7 @@ describe("buildUserMessage (doc §3.2)", () => {
     expect(msg).toContain('VIDEO TITLE: "Cómo gané 1000€ en un día"');
     expect(msg).toContain("THUMBNAIL DESCRIPTION:");
     expect(msg).toContain("VISUAL STYLE DIRECTION:");
+    expect(msg).toContain("OUTPUT FORMAT: horizontal 16:9");
     expect(msg).toContain("Output ONLY the prompt");
   });
 
@@ -86,8 +88,14 @@ describe("buildFallbackPrompt con imágenes citadas", () => {
 describe("buildFallbackPrompt", () => {
   it("siempre termina con el sufijo técnico de miniatura", () => {
     expect(buildFallbackPrompt(base)).toContain(
-      "16:9 aspect ratio. YouTube thumbnail style.",
+      "16:9 aspect ratio, YouTube thumbnail style, high contrast",
     );
+  });
+
+  it("respeta el formato vertical 9:16", () => {
+    const out = buildFallbackPrompt({ ...base, aspectRatio: "9:16" });
+    expect(out).toContain("9:16 aspect ratio, YouTube thumbnail style");
+    expect(out).not.toContain("16:9 aspect ratio");
   });
 });
 

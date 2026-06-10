@@ -3,6 +3,7 @@
 import {
   type ChangeEvent,
   type DragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -44,6 +45,17 @@ const HIGH_QUALITY_DEFAULT = true;
 // primer montaje leemos+borramos sessionStorage y lo guardamos aquí; el segundo
 // montaje lo reaplica desde esta variable. Se limpia al consumirlo.
 let pendingPrefill: { content?: string; style?: string; styleFromId?: string } | null = null;
+
+interface ContentUndoEntry {
+  before: string;
+  after: string;
+}
+
+interface StyleUndoEntry {
+  beforeText: string;
+  beforeSource: StyleSource;
+  afterText: string;
+}
 
 interface PersistedReference {
   id: string;
@@ -105,6 +117,8 @@ export default function HomePage() {
   const [styleText, setStyleText] = useState(""); // campo Estilo (texto copiable)
   const [styleSource, setStyleSource] = useState<StyleSource>(EMPTY_STYLE);
   const [publishMsg, setPublishMsg] = useState<string | null>(null);
+  const [contentAiUndoStack, setContentAiUndoStack] = useState<ContentUndoEntry[]>([]);
+  const [styleAiUndoStack, setStyleAiUndoStack] = useState<StyleUndoEntry[]>([]);
   // Sugeridores con IA (botones "Sugerir estilo/contenido con IA").
   const [suggesting, setSuggesting] = useState<null | "style" | "content">(null);
   const [suggestStyleError, setSuggestStyleError] = useState<string | null>(null);
@@ -165,7 +179,11 @@ export default function HomePage() {
       const storedForm = raw ?? legacyRaw;
       if (storedForm) {
         const s = JSON.parse(storedForm) as Partial<PersistedForm>;
-        if (s.params) setParams(s.params);
+        if (s.params) {
+          const nextParams: NanoBananaParams = { ...DEFAULT_NANO_BANANA_PARAMS, ...s.params };
+          nextParams.aspect_ratio = nextParams.aspect_ratio === "9:16" ? "9:16" : "16:9";
+          setParams(nextParams);
+        }
         if (typeof s.videoTitle === "string") setVideoTitle(s.videoTitle);
         if (typeof s.styleText === "string") setStyleText(s.styleText);
         if (s.styleSource) setStyleSource(s.styleSource);
@@ -190,17 +208,22 @@ export default function HomePage() {
 
       // Precarga desde la galería pública (botones "Usar contenido/estilo/ambos").
       // Sobrescribe el contenido/estilo del formulario restaurado.
-      let pf = pendingPrefill;
-      pendingPrefill = null;
-      if (!pf) {
-        const prefillRaw = sessionStorage.getItem(PREFILL_STORAGE_KEY);
-        if (prefillRaw) {
-          pf = JSON.parse(prefillRaw) as { content?: string; style?: string; styleFromId?: string };
-          sessionStorage.removeItem(PREFILL_STORAGE_KEY);
-          pendingPrefill = pf; // que el segundo montaje (StrictMode) lo reaplique
-        }
+      const prefillRaw = sessionStorage.getItem(PREFILL_STORAGE_KEY);
+      let pf: { content?: string; style?: string; styleFromId?: string } | null = null;
+      if (prefillRaw) {
+        pf = JSON.parse(prefillRaw) as { content?: string; style?: string; styleFromId?: string };
+        sessionStorage.removeItem(PREFILL_STORAGE_KEY);
+        pendingPrefill = pf; // que el segundo montaje (StrictMode) lo reaplique
+        window.setTimeout(() => {
+          if (pendingPrefill === pf) pendingPrefill = null;
+        }, 0);
+      } else {
+        pf = pendingPrefill;
+        pendingPrefill = null;
       }
       if (pf) {
+        setContentAiUndoStack([]);
+        setStyleAiUndoStack([]);
         if (typeof pf.content === "string") {
           const content = pf.content;
           setParams((prev) => ({ ...prev, prompt: content }));
@@ -337,6 +360,56 @@ export default function HomePage() {
   const insufficientCredits = creditSnapshot
     ? creditSnapshot.daily + creditSnapshot.monthly < creditsCost
     : false;
+  const selectedAspectRatio = params.aspect_ratio === "9:16" ? "9:16" : "16:9";
+
+  const setGenerationAspectRatio = useCallback((aspectRatio: "16:9" | "9:16") => {
+    setParams((prev) => ({ ...prev, aspect_ratio: aspectRatio }));
+  }, []);
+
+  const lastContentUndo = contentAiUndoStack.at(-1);
+  const lastStyleUndo = styleAiUndoStack.at(-1);
+  const canUndoContentSuggestion = lastContentUndo?.after === params.prompt;
+  const canUndoStyleSuggestion = lastStyleUndo?.afterText === styleText;
+
+  const pushContentUndo = useCallback((before: string, after: string) => {
+    setContentAiUndoStack((prev) => [...prev.slice(-19), { before, after }]);
+  }, []);
+
+  const pushStyleUndo = useCallback((beforeText: string, beforeSource: StyleSource, afterText: string) => {
+    setStyleAiUndoStack((prev) => [...prev.slice(-19), { beforeText, beforeSource, afterText }]);
+  }, []);
+
+  const undoContentSuggestion = useCallback(() => {
+    const entry = contentAiUndoStack.at(-1);
+    if (!entry || entry.after !== params.prompt) return;
+    setContentAiUndoStack((prev) => prev.slice(0, -1));
+    setParams((prev) => ({ ...prev, prompt: entry.before }));
+    setSuggestContentError(null);
+    requestAnimationFrame(() => contentRef.current?.focus());
+  }, [contentAiUndoStack, params.prompt]);
+
+  const undoStyleSuggestion = useCallback(() => {
+    const entry = styleAiUndoStack.at(-1);
+    if (!entry || entry.afterText !== styleText) return;
+    setStyleAiUndoStack((prev) => prev.slice(0, -1));
+    setStyleText(entry.beforeText);
+    setStyleSource(entry.beforeSource);
+    setSuggestStyleError(null);
+  }, [styleAiUndoStack, styleText]);
+
+  const handleContentKeyDown = useCallback((e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z" && canUndoContentSuggestion) {
+      e.preventDefault();
+      undoContentSuggestion();
+    }
+  }, [canUndoContentSuggestion, undoContentSuggestion]);
+
+  const handleStyleKeyDown = useCallback((e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z" && canUndoStyleSuggestion) {
+      e.preventDefault();
+      undoStyleSuggestion();
+    }
+  }, [canUndoStyleSuggestion, undoStyleSuggestion]);
 
   // La cabecera global muestra plan y créditos; aquí publicamos los snapshots
   // más frescos (tras generar/sugerir) para que no se quede desactualizada.
@@ -418,22 +491,29 @@ export default function HomePage() {
     setSuggesting(field);
     setError(null);
     try {
-      const res = await fetch(field === "style" ? "/api/suggest-style" : "/api/suggest-content", {
+      const res = await fetch("/api/suggest-field", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ videoTitle: title, content, style: styleText.trim(), locale }),
+        body: JSON.stringify({ field, videoTitle: title, content, style: styleText.trim(), locale }),
       });
-      const data = (await res.json()) as { suggestion?: string; error?: string; creditsRemaining?: { daily: number; monthly: number } };
+      const data = (await res.json()) as {
+        text?: string;
+        suggestion?: string;
+        error?: string;
+        creditsRemaining?: { daily: number; monthly: number };
+      };
       if (data.creditsRemaining) setCreditSnapshot(data.creditsRemaining);
-      if (!res.ok || !data.suggestion) {
+      const suggestion = data.text ?? data.suggestion;
+      if (!res.ok || !suggestion) {
         setError(data.error ?? t("suggestFailed"));
         return;
       }
-      const suggestion = data.suggestion;
       if (field === "style") {
+        pushStyleUndo(styleText, styleSource, suggestion);
         setStyleText(suggestion);
         setStyleSource({ kind: "custom", id: null, nicho: null, base: suggestion });
       } else {
+        pushContentUndo(params.prompt, suggestion);
         setParams((prev) => ({ ...prev, prompt: suggestion }));
       }
     } catch (err) {
@@ -537,6 +617,7 @@ export default function HomePage() {
               value={params.prompt}
               maxLength={2000}
               onChange={(e) => setParams({ ...params, prompt: e.target.value })}
+              onKeyDown={handleContentKeyDown}
               placeholder={t("contentPlaceholder")}
               rows={5}
               className="min-h-[7rem] w-full resize-y rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm"
@@ -548,27 +629,34 @@ export default function HomePage() {
                 })}
               </p>
             )}
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void suggest("content")}
-                disabled={isFreePlan || suggesting !== null || !(videoTitle.trim() || params.prompt.trim())}
-                title={isFreePlan ? t("suggestProOnly") : t("suggestContentTitle")}
-                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-strong)] transition hover:border-[var(--color-accent)] disabled:opacity-50"
-              >
-                {suggesting === "content"
-                  ? t("suggestContentBusy")
-                  : params.prompt.trim()
-                    ? t("suggestContentImprove")
-                    : t("suggestContentIdle")}
-              </button>
-              {isFreePlan ? (
-                <span className="text-xs text-[var(--color-text-muted)]">{t("suggestProOnly")}</span>
-              ) : (
-                !(videoTitle.trim() || params.prompt.trim()) && (
-                  <span className="text-xs text-[var(--color-text-muted)]">{t("fillTitleFirst")}</span>
-                )
-              )}
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void suggest("content")}
+                  disabled={isFreePlan || suggesting !== null || !(videoTitle.trim() || params.prompt.trim())}
+                  title={isFreePlan ? t("suggestProOnly") : t("suggestContentTitle")}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-strong)] transition hover:border-[var(--color-accent)] disabled:opacity-50"
+                >
+                  {suggesting === "content"
+                    ? t("suggestContentBusy")
+                    : params.prompt.trim()
+                      ? t("suggestContentImprove")
+                      : t("suggestContentIdle")}
+                </button>
+                {isFreePlan ? (
+                  <span className="text-xs text-[var(--color-text-muted)]">{t("suggestProOnly")}</span>
+                ) : (
+                  !(videoTitle.trim() || params.prompt.trim()) && (
+                    <span className="text-xs text-[var(--color-text-muted)]">{t("fillTitleFirst")}</span>
+                  )
+                )}
+              </div>
+              <UndoIconButton
+                label={t("undoContentSuggestion")}
+                disabled={!canUndoContentSuggestion}
+                onClick={undoContentSuggestion}
+              />
             </div>
             {suggestContentError && <p className="mt-1 text-xs text-[var(--color-danger)]">{suggestContentError}</p>}
           </Panel>
@@ -579,31 +667,39 @@ export default function HomePage() {
               value={styleText}
               maxLength={1500}
               onChange={(e) => setStyleText(e.target.value)}
+              onKeyDown={handleStyleKeyDown}
               placeholder={t("stylePlaceholder")}
               rows={4}
               className="min-h-[6rem] w-full resize-y rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2.5 text-sm"
             />
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void suggest("style")}
-                disabled={isFreePlan || suggesting !== null || !(videoTitle.trim() || params.prompt.trim())}
-                title={isFreePlan ? t("suggestProOnly") : t("suggestTitle")}
-                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-strong)] transition hover:border-[var(--color-accent)] disabled:opacity-50"
-              >
-                {suggesting === "style"
-                  ? t("suggestBusy")
-                  : styleText.trim()
-                    ? t("suggestImprove")
-                    : t("suggestIdle")}
-              </button>
-              {isFreePlan ? (
-                <span className="text-xs text-[var(--color-text-muted)]">{t("suggestProOnly")}</span>
-              ) : (
-                !(videoTitle.trim() || params.prompt.trim()) && (
-                  <span className="text-xs text-[var(--color-text-muted)]">{t("fillFirst")}</span>
-                )
-              )}
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void suggest("style")}
+                  disabled={isFreePlan || suggesting !== null || !(videoTitle.trim() || params.prompt.trim())}
+                  title={isFreePlan ? t("suggestProOnly") : t("suggestTitle")}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-strong)] transition hover:border-[var(--color-accent)] disabled:opacity-50"
+                >
+                  {suggesting === "style"
+                    ? t("suggestBusy")
+                    : styleText.trim()
+                      ? t("suggestImprove")
+                      : t("suggestIdle")}
+                </button>
+                {isFreePlan ? (
+                  <span className="text-xs text-[var(--color-text-muted)]">{t("suggestProOnly")}</span>
+                ) : (
+                  !(videoTitle.trim() || params.prompt.trim()) && (
+                    <span className="text-xs text-[var(--color-text-muted)]">{t("fillFirst")}</span>
+                  )
+                )}
+              </div>
+              <UndoIconButton
+                label={t("undoStyleSuggestion")}
+                disabled={!canUndoStyleSuggestion}
+                onClick={undoStyleSuggestion}
+              />
             </div>
             {suggestStyleError && <p className="mt-1 text-xs text-[var(--color-danger)]">{suggestStyleError}</p>}
             {styleSource.kind === "gallery" && styleText === styleSource.base && (
@@ -696,6 +792,34 @@ export default function HomePage() {
 
           {/* Campo 5 — Opciones (solo PRO) */}
           <Panel title={t("optionsTitle")}>
+            <div className="mb-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">{t("formatLabel")}</p>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { value: "16:9" as const, icon: "\u25ad", label: t("formatHorizontal") },
+                  { value: "9:16" as const, icon: "\u25af", label: t("formatVertical") },
+                ]).map((option) => {
+                  const active = selectedAspectRatio === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setGenerationAspectRatio(option.value)}
+                      className={`flex min-h-11 items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition ${
+                        active
+                          ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent-strong)]"
+                          : "border-[var(--color-border-strong)] bg-[var(--color-bg-panel-2)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)]"
+                      }`}
+                    >
+                      <span aria-hidden className="text-xl leading-none">{option.icon}</span>
+                      <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                      <span className="text-xs font-semibold">{option.value}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             {isFreePlan ? (
               <div className="space-y-3">
                 <p className="text-xs text-[var(--color-text-muted)]">{t("proOptionsTeaser")}</p>
@@ -758,7 +882,7 @@ export default function HomePage() {
           {generationError && <div className="rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-3 text-xs">{generationError}</div>}
         </section>
 
-        <section className="space-y-6">
+        <section className="min-w-0 space-y-6">
           <ResultPanel
             result={result}
             generating={generating}
@@ -776,6 +900,29 @@ export default function HomePage() {
 
 function Panel({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-4"><header className="mb-3 flex items-baseline justify-between gap-3"><h2 className="shrink-0 text-sm font-semibold tracking-tight">{title}</h2>{subtitle && <span className="text-right text-xs leading-snug text-[var(--color-text-muted)]">{subtitle}</span>}</header>{children}</div>;
+}
+
+function UndoIconButton({
+  label,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--color-border-strong)] bg-[var(--color-bg-panel-2)] text-[var(--color-text-secondary)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      <span aria-hidden className="text-lg leading-none">{"\u21b6"}</span>
+    </button>
+  );
 }
 
 function PublishControls({
@@ -881,17 +1028,26 @@ function ResultPanel({
     );
   }
 
+  const singleImage = result.images.length === 1;
+
   return (
     <Panel title={t("resultTitle")} subtitle={t("imagesCount", { count: result.images.length })}>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className={`grid grid-cols-1 gap-3 ${singleImage ? "" : "sm:grid-cols-2"}`}>
         {result.images.map((img, i) => (
-          <figure key={i} className="overflow-hidden rounded-md border border-[var(--color-border)] bg-black/40">
+          <figure
+            key={i}
+            className={`overflow-hidden rounded-md border border-[var(--color-border)] bg-black/40 ${
+              singleImage ? "mx-auto w-full max-w-5xl" : ""
+            }`}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`data:${img.mimeType};base64,${img.data}`}
               alt={t("generatedAlt", { n: i + 1 })}
               onClick={() => setZoomed(i)}
-              className="block w-full cursor-zoom-in transition hover:opacity-95"
+              className={`block w-full cursor-zoom-in object-contain transition hover:opacity-95 ${
+                singleImage ? "max-h-[72vh]" : ""
+              }`}
             />
             <figcaption className="flex items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2 text-xs">
               <button

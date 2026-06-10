@@ -10,6 +10,22 @@
 
 import { THUMBNAIL_SYSTEM_PROMPT } from "@/lib/prompts/system-prompt";
 import { callGeminiFlash, type GeminiTextContent, type GeminiTextPart } from "@/lib/geminiText";
+import type { AspectRatio } from "@/lib/nanoBanana";
+
+const DEFAULT_FINAL_PROMPT_SUFFIX =
+  "16:9 aspect ratio, YouTube thumbnail style, high contrast, bold and readable at small sizes.";
+
+function finalPromptSuffix(aspectRatio: AspectRatio): string {
+  const ratio = aspectRatio === "9:16" ? "9:16" : "16:9";
+  return `${ratio} aspect ratio, YouTube thumbnail style, high contrast, bold and readable at small sizes.`;
+}
+
+function thumbnailSystemPrompt(aspectRatio: AspectRatio): string {
+  return THUMBNAIL_SYSTEM_PROMPT.replaceAll(
+    DEFAULT_FINAL_PROMPT_SUFFIX,
+    finalPromptSuffix(aspectRatio),
+  );
+}
 
 // Una imagen de referencia con su etiqueta visible ("Image 1", "Image 2"…),
 // que es como el usuario la cita en el contenido ([Image N]).
@@ -25,6 +41,7 @@ export interface EnhancerInput {
   referenceImages: EnhancerReferenceImage[]; // TODAS las imágenes, en orden
   referenceInstructions: string | null; // instrucciones por imagen, etiquetadas
   stylePrompt: string; // texto del estilo (preset, custom o galería)
+  aspectRatio: AspectRatio;
 }
 
 export interface EnhanceResult {
@@ -52,6 +69,7 @@ export function buildUserMessage(input: EnhancerInput): string {
   if (input.referenceInstructions) {
     userMessage += `PER-IMAGE INSTRUCTIONS:\n${input.referenceInstructions}\n\n`;
   }
+  userMessage += `OUTPUT FORMAT: ${input.aspectRatio === "9:16" ? "vertical 9:16" : "horizontal 16:9"}.\n\n`;
   userMessage += `Generate an optimized image generation prompt based on all the above. Output ONLY the prompt, nothing else.`;
   return userMessage;
 }
@@ -79,9 +97,7 @@ export function buildFallbackPrompt(input: EnhancerInput): string {
   if (input.referenceInstructions) {
     parts.push(`Reference notes: ${normalizeImageCitations(input.referenceInstructions)}`);
   }
-  parts.push(
-    '16:9 aspect ratio. YouTube thumbnail style. High contrast. Bold and readable at small sizes.',
-  );
+  parts.push(finalPromptSuffix(input.aspectRatio));
   return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
@@ -108,7 +124,7 @@ export async function enhancePrompt(
   const contents: GeminiTextContent[] = [{ role: "user", parts }];
 
   const response = await callGeminiFlash({
-    systemInstruction: THUMBNAIL_SYSTEM_PROMPT,
+    systemInstruction: thumbnailSystemPrompt(input.aspectRatio),
     contents,
     apiKey: opts.apiKey,
   });
