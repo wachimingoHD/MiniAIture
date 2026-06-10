@@ -4,13 +4,29 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
-import { getPublicGenerations, toPublicDTO } from "@/lib/firestore/generations";
+import { getRuntimeConfig } from "@/lib/config/runtime";
+import { getClientIp } from "@/lib/server/request";
+import { checkIpThrottle } from "@/lib/server/ip-throttle";
+import {
+  getPublicGenerations,
+  getRandomPublicGenerations,
+  toPublicDTO,
+} from "@/lib/firestore/generations";
 
 export const runtime = "nodejs";
 
 const PAGE_SIZE = 24;
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
+  // Anti-abuso: >300 peticiones en 10 min desde la misma IP → bloqueo 1 hora.
+  const ip = getClientIp(req, getRuntimeConfig().security.trustedProxyHeader);
+  if (!checkIpThrottle(ip).ok) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again later.", reason: "rate_limited" },
+      { status: 429 },
+    );
+  }
+
   const db = adminFirestore();
   if (!db) {
     return NextResponse.json(
@@ -19,17 +35,21 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const sort = req.nextUrl.searchParams.get("sort") === "popular" ? "popular" : "recent";
+  const sortParam = req.nextUrl.searchParams.get("sort");
+  const sort = sortParam === "popular" ? "popular" : sortParam === "random" ? "random" : "recent";
   const cursor = req.nextUrl.searchParams.get("cursor") ?? undefined;
   const nicho = req.nextUrl.searchParams.get("nicho");
 
   let items;
   try {
-    items = await getPublicGenerations(db, {
-      limit: PAGE_SIZE,
-      startAfterCreatedAt: sort === "recent" ? cursor : undefined,
-      orderBy: sort === "popular" ? "timesStyleCopied" : "createdAt",
-    });
+    items =
+      sort === "random"
+        ? await getRandomPublicGenerations(db, { limit: PAGE_SIZE })
+        : await getPublicGenerations(db, {
+            limit: PAGE_SIZE,
+            startAfterCreatedAt: sort === "recent" ? cursor : undefined,
+            orderBy: sort === "popular" ? "timesStyleCopied" : "createdAt",
+          });
   } catch (err) {
     // Falta el índice compuesto de Firestore: degradar a vacío en vez de 500.
     const needsIndex = String((err as Error).message).includes("FAILED_PRECONDITION");
@@ -47,9 +67,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     sort === "recent" && items.length === PAGE_SIZE ? items[items.length - 1].createdAt : null;
 
   // DTO público: nunca exponemos userId, enhancedPrompt, créditos, etc.
-  return NextResponse.json({
+  const res = NextResponse.json({
     count: filtered.length,
     nextCursor,
     images: filtered.map((g) => toPublicDTO(g)),
   });
+  // Recent/popular se cachean en el CDN (refrescos repetidos = 0 lecturas de
+  // Firestore). Random no: cada petición debe ser distinta.
+  if (sort !== "random") {
+    res.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
+  }
+  return res;
 }

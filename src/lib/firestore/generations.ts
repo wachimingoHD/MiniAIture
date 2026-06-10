@@ -150,6 +150,39 @@ export async function getPublicGenerations(
   return snap.docs.map(withId);
 }
 
+// Muestreo ALEATORIO eficiente de generaciones públicas (banner de la landing
+// y modo aleatorio de la galería). Truco estándar de Firestore: se genera un id
+// de documento aleatorio y se usa como cursor sobre __name__, con vuelta al
+// principio si no se llena el cupo. Máximo 2 consultas de `limit` docs cada una
+// — nunca se lee la colección entera, da igual cuántas miniaturas haya.
+export async function getRandomPublicGenerations(
+  db: Firestore,
+  opts: { limit: number },
+): Promise<GenerationWithId[]> {
+  const randomId = db.collection(GENERATIONS_COLLECTION).doc().id;
+  const base = db.collection(GENERATIONS_COLLECTION).where("isPublic", "==", true);
+
+  const first = await base.orderBy("__name__").startAt(randomId).limit(opts.limit).get();
+  let docs = first.docs;
+  if (docs.length < opts.limit) {
+    const wrap = await base
+      .orderBy("__name__")
+      .endBefore(randomId)
+      .limit(opts.limit - docs.length)
+      .get();
+    docs = [...docs, ...wrap.docs];
+  }
+
+  // Barajado Fisher-Yates: el cursor devuelve ids consecutivos (correlacionados
+  // entre sí); el shuffle rompe ese orden para que el grid se vea aleatorio.
+  const items = docs.map(withId);
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  return items;
+}
+
 // Para el sitemap: ids + fecha de TODAS las generaciones públicas (campo mínimo).
 // Usa el índice isPublic+createdAt. `max` acota por seguridad (el límite por
 // sitemap de Google es 50.000 URLs).

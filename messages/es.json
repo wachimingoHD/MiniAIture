@@ -113,7 +113,14 @@
     "title": "Galería de miniaturas creadas por la comunidad",
     "subtitle": "Miniaturas de YouTube generadas con IA. Haz clic para ver el estilo.",
     "empty": "Todavía no hay miniaturas públicas. ¡Sé el primero en publicar la tuya!",
-    "styleUsedTimes": "{count, plural, one {Estilo usado # vez} other {Estilo usado # veces}}"
+    "styleUsedTimes": "{count, plural, one {Estilo usado # vez} other {Estilo usado # veces}}",
+    "sortRecent": "Más recientes",
+    "sortRandom": "Aleatorio",
+    "refresh": "↻ Actualizar",
+    "refreshTitle": "Vuelve a cargar las miniaturas",
+    "loadMore": "Ver más",
+    "loading": "Cargando…",
+    "noMore": "No hay más miniaturas por ahora."
   },
   "loader": {
     "creating": "Creando tu miniatura",

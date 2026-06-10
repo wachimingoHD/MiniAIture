@@ -113,7 +113,14 @@
     "title": "Gallery of community-made thumbnails",
     "subtitle": "YouTube thumbnails generated with AI. Click to see the style.",
     "empty": "There are no public thumbnails yet. Be the first to publish yours!",
-    "styleUsedTimes": "{count, plural, one {Style used # time} other {Style used # times}}"
+    "styleUsedTimes": "{count, plural, one {Style used # time} other {Style used # times}}",
+    "sortRecent": "Most recent",
+    "sortRandom": "Random",
+    "refresh": "↻ Refresh",
+    "refreshTitle": "Reload the thumbnails",
+    "loadMore": "Show more",
+    "loading": "Loading…",
+    "noMore": "No more thumbnails for now."
   },
   "loader": {
     "creating": "Creating your thumbnail",

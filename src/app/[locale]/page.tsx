@@ -9,7 +9,7 @@ import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
-import { getPublicGenerations, type GenerationWithId } from "@/lib/firestore/generations";
+import { getRandomPublicGenerations, type GenerationWithId } from "@/lib/firestore/generations";
 import PenguinThumbnailMarquee, { type MarqueeThumb } from "@/components/ui/PenguinThumbnailMarquee";
 
 export const runtime = "nodejs";
@@ -33,10 +33,10 @@ async function loadPublicThumbs(anonymousLabel: string): Promise<MarqueeThumb[]>
   const db = adminFirestore();
   if (!db) return [];
   try {
-    const gens: GenerationWithId[] = await getPublicGenerations(db, {
-      limit: 24,
-      orderBy: "timesStyleCopied",
-    });
+    // Muestra aleatoria de TODA la galería pública (no solo las más copiadas).
+    // El muestreo por cursor aleatorio lee como mucho 2×24 docs: misma carga
+    // que la consulta ordenada de antes, distinto resultado en cada visita.
+    const gens: GenerationWithId[] = await getRandomPublicGenerations(db, { limit: 24 });
 
     // Nombre del autor: lo buscamos en la colección `users` (deduplicado).
     // (La foto del autor no se guarda aún; el modal usa avatar con inicial.)
@@ -112,8 +112,12 @@ export default async function LandingPage({
       </div>
 
       <main>
-        {/* HERO — ocupa casi toda la altura; deja asomar los pingüinos al deslizar. */}
-        <section className="relative z-10 mx-auto flex min-h-[88vh] max-w-[1200px] flex-col items-center justify-center px-4 text-center md:px-8">
+        {/* HERO — alto = viewport menos 240px FIJOS reservados para el título de
+            la sección y un asomo de las miniaturas. Con vh relativo (88vh), en
+            pantallas bajas el 12% restante no llegaba y las miniaturas quedaban
+            ocultas bajo el pliegue; con píxeles fijos asoman siempre igual.
+            El max() evita que el hero colapse en pantallas muy pequeñas. */}
+        <section className="relative z-10 mx-auto flex min-h-[max(430px,calc(100svh-240px))] max-w-[1200px] flex-col items-center justify-center px-4 text-center md:px-8">
         <h1 className="font-display text-[clamp(2.25rem,10vw,8.5rem)] font-extrabold leading-[1.05] tracking-tight">
           Mini<span className="text-[var(--color-accent)]">AI</span>tura
         </h1>
