@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import {
   DEFAULT_NANO_BANANA_PARAMS,
@@ -25,12 +25,8 @@ import { STYLE_PRESETS } from "@/lib/constants/style-presets";
 import MascotLoader from "@/components/mascots/MascotLoader";
 import MascotEmpty from "@/components/mascots/MascotEmpty";
 import PublishConfirmModal from "@/components/ui/PublishConfirmModal";
-import {
-  getCurrentIdToken,
-  signInWithGoogle,
-  signOutUser,
-  subscribeToAuthState,
-} from "@/lib/auth/firebase-client";
+import { getCurrentIdToken, subscribeToAuthState } from "@/lib/auth/firebase-client";
+import { publishCredits } from "@/lib/auth/credits-bus";
 
 // El estilo es un texto editable. `source` recuerda de dónde salió (preset o
 // galería) para conservar styleType/styleId mientras el texto no se edite; en
@@ -87,8 +83,7 @@ function formatBytes(bytes: number): string {
 
 export default function HomePage() {
   const t = useTranslations("generate");
-  const tNav = useTranslations("nav");
-  const tAuth = useTranslations("auth");
+  const locale = useLocale();
   const [params, setParams] = useState<NanoBananaParams>(DEFAULT_NANO_BANANA_PARAMS);
   const [referenceImages, setReferenceImages] = useState<UploadedReference[]>([]);
   const [referenceError, setReferenceError] = useState<string | null>(null);
@@ -96,7 +91,6 @@ export default function HomePage() {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
-  const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [planLabel, setPlanLabel] = useState<"free" | "pro" | null>(null);
   const [creditSnapshot, setCreditSnapshot] = useState<{ daily: number; monthly: number } | null>(null);
@@ -111,9 +105,10 @@ export default function HomePage() {
   const [styleText, setStyleText] = useState(""); // campo Estilo (texto copiable)
   const [styleSource, setStyleSource] = useState<StyleSource>(EMPTY_STYLE);
   const [publishMsg, setPublishMsg] = useState<string | null>(null);
-  // Sugeridor de estilo con IA (botón "Sugerir estilo con IA").
-  const [suggestingStyle, setSuggestingStyle] = useState(false);
-  const [suggestError, setSuggestError] = useState<string | null>(null);
+  // Sugeridores con IA (botones "Sugerir estilo/contenido con IA").
+  const [suggesting, setSuggesting] = useState<null | "style" | "content">(null);
+  const [suggestStyleError, setSuggestStyleError] = useState<string | null>(null);
+  const [suggestContentError, setSuggestContentError] = useState<string | null>(null);
 
   // Aplica un preset al campo de estilo (queda editable).
   const applyPreset = (p: (typeof STYLE_PRESETS)[number]) => {
@@ -343,16 +338,20 @@ export default function HomePage() {
     ? creditSnapshot.daily + creditSnapshot.monthly < creditsCost
     : false;
 
+  // La cabecera global muestra plan y créditos; aquí publicamos los snapshots
+  // más frescos (tras generar/sugerir) para que no se quede desactualizada.
+  useEffect(() => {
+    publishCredits({ plan: planLabel, credits: creditSnapshot });
+  }, [planLabel, creditSnapshot]);
+
   useEffect(() => {
     const unsubscribe = subscribeToAuthState(async (user) => {
       if (!user) {
-        setAuthEmail(null);
         setAuthToken(null);
         setPlanLabel(null);
         setCreditSnapshot(null);
         return;
       }
-      setAuthEmail(user.email ?? "signed-in-user");
       const token = await user.getIdToken();
       setAuthToken(token);
       const creditsRes = await fetch("/api/user/credits", { headers: { Authorization: `Bearer ${token}` } });
@@ -400,40 +399,47 @@ export default function HomePage() {
     setReferenceError(error);
   }, [referenceImages, t]);
 
-  // Pide a la IA (Gemini 2.5 Flash) una dirección de estilo a partir del título
-  // y el contenido. Cuesta 1 crédito (se reembolsa en el servidor si falla).
-  const suggestStyle = async () => {
+  // Pide a la IA una sugerencia para el campo Estilo o Contenido a partir del
+  // resto del formulario. Si el campo ya tiene texto, el LLM lo mejora en vez
+  // de sustituirlo. Cuesta 1 crédito (se reembolsa en el servidor si falla).
+  const suggest = async (field: "style" | "content") => {
+    const setError = field === "style" ? setSuggestStyleError : setSuggestContentError;
     const title = videoTitle.trim();
     const content = params.prompt.trim();
     if (!title && !content) {
-      setSuggestError(t("writeTitleOrContent"));
+      setError(t("writeTitleOrContent"));
       return;
     }
     const token = authToken ?? (await getCurrentIdToken());
     if (!token) {
-      setSuggestError(t("signInToSuggest"));
+      setError(t("signInToSuggest"));
       return;
     }
-    setSuggestingStyle(true);
-    setSuggestError(null);
+    setSuggesting(field);
+    setError(null);
     try {
-      const res = await fetch("/api/suggest-style", {
+      const res = await fetch(field === "style" ? "/api/suggest-style" : "/api/suggest-content", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ videoTitle: title, content }),
+        body: JSON.stringify({ videoTitle: title, content, style: styleText.trim(), locale }),
       });
-      const data = (await res.json()) as { style?: string; error?: string; creditsRemaining?: { daily: number; monthly: number } };
+      const data = (await res.json()) as { suggestion?: string; error?: string; creditsRemaining?: { daily: number; monthly: number } };
       if (data.creditsRemaining) setCreditSnapshot(data.creditsRemaining);
-      if (!res.ok || !data.style) {
-        setSuggestError(data.error ?? t("suggestFailed"));
+      if (!res.ok || !data.suggestion) {
+        setError(data.error ?? t("suggestFailed"));
         return;
       }
-      setStyleText(data.style);
-      setStyleSource({ kind: "custom", id: null, nicho: null, base: data.style });
+      const suggestion = data.suggestion;
+      if (field === "style") {
+        setStyleText(suggestion);
+        setStyleSource({ kind: "custom", id: null, nicho: null, base: suggestion });
+      } else {
+        setParams((prev) => ({ ...prev, prompt: suggestion }));
+      }
     } catch (err) {
-      setSuggestError((err as Error).message);
+      setError((err as Error).message);
     } finally {
-      setSuggestingStyle(false);
+      setSuggesting(null);
     }
   };
 
@@ -498,49 +504,7 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto max-w-[1480px] px-4 py-6 md:px-8 md:py-10">
-      <header className="flex items-center justify-between border-b border-[var(--color-border)] pb-5">
-        <div>
-          <h1 className="font-display text-xl font-bold tracking-tight">Mini<span className="text-[var(--color-accent)]">AI</span>tura</h1>
-          <p className="text-xs text-[var(--color-text-muted)]">{t("tagline")}</p>
-        </div>
-        <nav className="hidden items-center gap-4 text-sm text-[var(--color-text-secondary)] md:flex">
-          <Link href="/pricing" className="hover:text-[var(--color-accent)]">{tNav("pricing")}</Link>
-          <Link href="/gallery" className="hover:text-[var(--color-accent)]">{tNav("community")}</Link>
-          {authEmail ? (
-            <>
-              <Link href="/dashboard/gallery" className="hover:text-[var(--color-accent)]">{tNav("myGallery")}</Link>
-              <Link href="/dashboard/settings" className="hover:text-[var(--color-accent)]">{tNav("settings")}</Link>
-              <div className="flex flex-col items-end gap-1.5">
-                <p className="text-xs text-[var(--color-text-muted)]">{authEmail}</p>
-                <div className="flex items-center gap-2.5">
-                  <span className="rounded-full border border-[var(--color-accent)]/30 bg-[var(--color-accent-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--color-accent-strong)]">
-                    {planLabel ? planLabel : t("planUnknown")}
-                  </span>
-                  {creditSnapshot && (
-                    <div className="flex items-center gap-3 text-xs">
-                      <span className="inline-flex items-center gap-1.5 text-[var(--color-success)]">
-                        <span className="h-2 w-2 rounded-full bg-[var(--color-success)]" />
-                        <span className="font-semibold tabular-nums">{creditSnapshot.daily}</span>
-                        <span className="text-[var(--color-text-muted)]">{t("daily")}</span>
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 text-[var(--color-text-muted)]">
-                        <span className="h-2 w-2 rounded-full bg-[var(--color-text-muted)]" />
-                        <span className="font-semibold tabular-nums">{creditSnapshot.monthly}</span>
-                        <span>{t("monthly")}</span>
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <button type="button" onClick={() => void signOutUser()} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm">{tAuth("signOut")}</button>
-            </>
-          ) : (
-            <button type="button" onClick={() => void signInWithGoogle()} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm">{tAuth("signIn")}</button>
-          )}
-        </nav>
-      </header>
-
-      <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
         <section className="space-y-5">
           {/* Campo 1 — Título del vídeo (opcional) */}
           <Panel title={t("titleFieldTitle")} subtitle={t("titleFieldSubtitle")}>
@@ -572,6 +536,29 @@ export default function HomePage() {
                 })}
               </p>
             )}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void suggest("content")}
+                disabled={isFreePlan || suggesting !== null || !(videoTitle.trim() || params.prompt.trim())}
+                title={isFreePlan ? t("suggestProOnly") : t("suggestContentTitle")}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-strong)] transition hover:border-[var(--color-accent)] disabled:opacity-50"
+              >
+                {suggesting === "content"
+                  ? t("suggestContentBusy")
+                  : params.prompt.trim()
+                    ? t("suggestContentImprove")
+                    : t("suggestContentIdle")}
+              </button>
+              {isFreePlan ? (
+                <span className="text-xs text-[var(--color-text-muted)]">{t("suggestProOnly")}</span>
+              ) : (
+                !(videoTitle.trim() || params.prompt.trim()) && (
+                  <span className="text-xs text-[var(--color-text-muted)]">{t("fillTitleFirst")}</span>
+                )
+              )}
+            </div>
+            {suggestContentError && <p className="mt-1 text-xs text-[var(--color-danger)]">{suggestContentError}</p>}
           </Panel>
 
           {/* Campo 3 — Estilo (texto copiable / compartible) */}
@@ -587,18 +574,26 @@ export default function HomePage() {
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => void suggestStyle()}
-                disabled={suggestingStyle || !(videoTitle.trim() || params.prompt.trim())}
-                title={t("suggestTitle")}
+                onClick={() => void suggest("style")}
+                disabled={isFreePlan || suggesting !== null || !(videoTitle.trim() || params.prompt.trim())}
+                title={isFreePlan ? t("suggestProOnly") : t("suggestTitle")}
                 className="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-strong)] transition hover:border-[var(--color-accent)] disabled:opacity-50"
               >
-                {suggestingStyle ? t("suggestBusy") : t("suggestIdle")}
+                {suggesting === "style"
+                  ? t("suggestBusy")
+                  : styleText.trim()
+                    ? t("suggestImprove")
+                    : t("suggestIdle")}
               </button>
-              {!(videoTitle.trim() || params.prompt.trim()) && (
-                <span className="text-xs text-[var(--color-text-muted)]">{t("fillFirst")}</span>
+              {isFreePlan ? (
+                <span className="text-xs text-[var(--color-text-muted)]">{t("suggestProOnly")}</span>
+              ) : (
+                !(videoTitle.trim() || params.prompt.trim()) && (
+                  <span className="text-xs text-[var(--color-text-muted)]">{t("fillFirst")}</span>
+                )
               )}
             </div>
-            {suggestError && <p className="mt-1 text-xs text-[var(--color-danger)]">{suggestError}</p>}
+            {suggestStyleError && <p className="mt-1 text-xs text-[var(--color-danger)]">{suggestStyleError}</p>}
             {styleSource.kind === "gallery" && styleText === styleSource.base && (
               <p className="mt-2 text-xs text-[var(--color-accent)]">{t("galleryStyleLoaded")}</p>
             )}
@@ -640,10 +635,10 @@ export default function HomePage() {
             {referenceImages.length > 0 && (
               <div className="mt-3 space-y-3">
                 {referenceImages.map((ref, i) => {
-                  // "Image N" es un token de protocolo (se inserta como [Image N]
-                  // y el enhancer lo normaliza). Debe ser idéntico en frontend,
-                  // backend (route.ts) y el normalizador del enhancer.
-                  const label = `Image ${i + 1}`;
+                  // Token de cita en el idioma de la página: [Imagen N] en es,
+                  // [Image N] en en. El normalizador del enhancer
+                  // (normalizeImageCitations) acepta ambas formas.
+                  const label = locale === "es" ? `Imagen ${i + 1}` : `Image ${i + 1}`;
                   return (
                     <div key={ref.id} className="flex gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2.5">
                       <div className="relative shrink-0">
@@ -690,9 +685,29 @@ export default function HomePage() {
           {/* Campo 5 — Opciones (solo PRO) */}
           <Panel title={t("optionsTitle")}>
             {isFreePlan ? (
-              <p className="text-xs text-[var(--color-text-muted)]">
-                {t("freeOptionsNote")}
-              </p>
+              <div className="space-y-3">
+                <p className="text-xs text-[var(--color-text-muted)]">{t("proOptionsTeaser")}</p>
+                <ul className="space-y-2 text-xs text-[var(--color-text-secondary)]">
+                  <li className="flex items-start gap-2">
+                    <span aria-hidden className="text-[var(--color-accent)]">✦</span>
+                    <span><span className="font-medium">{t("saverLabel")}</span> · {t("optSaverTeaser")}</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span aria-hidden className="text-[var(--color-accent)]">✦</span>
+                    <span><span className="font-medium">{t("highQualityLabel")}</span> · {t("optHighQualityTeaser")}</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span aria-hidden className="text-[var(--color-accent)]">✦</span>
+                    <span><span className="font-medium">{t("highResLabel")}</span> · {t("optHighResTeaser")}</span>
+                  </li>
+                </ul>
+                <Link
+                  href="/pricing"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-strong)] transition hover:border-[var(--color-accent)]"
+                >
+                  {t("proOptionsCta")}
+                </Link>
+              </div>
             ) : (
               <div className="space-y-4">
                 <label className="block">

@@ -6,7 +6,6 @@
 import { useEffect, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { Link } from "@/i18n/navigation";
-import PageHeader from "@/components/ui/PageHeader";
 import { signInWithGoogle, signOutUser, subscribeToAuthState } from "@/lib/auth/firebase-client";
 
 interface Credits {
@@ -112,6 +111,27 @@ export default function SettingsPage() {
     }
   };
 
+  // Deshace la cancelación programada (no cobra nada: el periodo ya está pagado).
+  const resumeSubscriptionAction = async () => {
+    if (!token) return;
+    setCancelBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/billing/reactivate", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setMsg({ kind: "err", text: data.error ?? t("resumeFailed") });
+        return;
+      }
+      setProfile((p) => (p ? { ...p, cancelAtPeriodEnd: false } : p));
+      setMsg({ kind: "ok", text: t("resumeSuccess") });
+    } catch (err) {
+      setMsg({ kind: "err", text: (err as Error).message });
+    } finally {
+      setCancelBusy(false);
+    }
+  };
+
   const cancelSubscription = async () => {
     if (!token) return;
     if (!window.confirm(t("cancelConfirm"))) return;
@@ -135,7 +155,6 @@ export default function SettingsPage() {
 
   return (
     <main className="mx-auto max-w-[680px] px-4 py-8 md:px-8 md:py-12">
-      <PageHeader subtitle={t("headerSubtitle")} />
       <div className="mt-6">
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
       </div>
@@ -196,12 +215,22 @@ export default function SettingsPage() {
             {profile.plan === "pro" ? (
               <div className="mt-3 space-y-3">
                 {profile.cancelAtPeriodEnd ? (
-                  <p className="text-sm text-[var(--color-text-secondary)]">
-                    {t.rich("willCancelOn", {
-                      date: fmtDate(profile.subscriptionEnd, locale),
-                      strong: (c) => <strong>{c}</strong>,
-                    })}
-                  </p>
+                  <>
+                    <p className="text-sm text-[var(--color-text-secondary)]">
+                      {t.rich("willCancelOn", {
+                        date: fmtDate(profile.subscriptionEnd, locale),
+                        strong: (c) => <strong>{c}</strong>,
+                      })}
+                    </p>
+                    <button
+                      type="button"
+                      disabled={cancelBusy}
+                      onClick={() => void resumeSubscriptionAction()}
+                      className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[var(--color-accent-strong)] disabled:opacity-50"
+                    >
+                      {cancelBusy ? t("resuming") : t("resumeSubscription")}
+                    </button>
+                  </>
                 ) : (
                   <>
                     <p className="text-sm text-[var(--color-text-secondary)]">

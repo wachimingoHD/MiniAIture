@@ -44,7 +44,7 @@ export function buildUserMessage(input: EnhancerInput): string {
     const labels = input.referenceImages.map((r) => r.label).join(", ");
     userMessage +=
       `ATTACHED REFERENCE IMAGES (in this order): ${labels}.\n` +
-      `When the description cites [Image N], that attached image IS a real subject to place in the thumbnail. In your output prompt refer to it as "the subject from reference image N" and preserve its identity. Every cited subject must appear in the final image.\n\n`;
+      `When the description cites [Image N] (or [Imagen N] in Spanish), that attached image IS a real subject to place in the thumbnail. In your output prompt refer to it as "the subject from reference image N" and preserve its identity. Every cited subject must appear in the final image.\n\n`;
   }
   if (input.stylePrompt) {
     userMessage += `VISUAL STYLE DIRECTION: ${input.stylePrompt}\n\n`;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyMonthlyResetIfDue, applyResetsIfDue } from "@/lib/firestore/credits";
-import type { UserDocument } from "@/lib/firestore/schema";
+import { emptyUserStats, type UserDocument } from "@/lib/firestore/schema";
 
 function baseDoc(overrides: Partial<UserDocument>): UserDocument {
   const now = Date.now();
@@ -13,14 +13,7 @@ function baseDoc(overrides: Partial<UserDocument>): UserDocument {
       monthly: 100,
       monthlyResetAt: new Date(now - 1000).toISOString(),
     },
-    stats: {
-      totalImagesGenerated: 0,
-      totalCreditsUsedFree: 0,
-      totalCreditsUsedPro: 0,
-      monthsSubscribed: 0,
-      googleGenerations: 0,
-      falGenerations: 0,
-    },
+    stats: emptyUserStats(),
     ...overrides,
   };
 }

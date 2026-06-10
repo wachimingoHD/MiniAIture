@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminFirestore, verifyIdToken } from "@/lib/auth/firebase-admin";
 import { readBearerToken } from "@/lib/server/request";
 import { getOrCreateUserDocument } from "@/lib/firestore/users";
-import { createProCheckoutSession, sanitizeAffiliateCode } from "@/lib/stripe/client";
+import { createProCheckoutSession, findOpenSubscription } from "@/lib/stripe/client";
+import { getActiveAffiliate, normalizeAffiliateCode } from "@/lib/firestore/affiliates";
+import { applyStripeSubscriptionToUser } from "@/lib/stripe/subscription-sync";
 import { safeErrorMessage } from "@/lib/server/errors";
 import { routing, type Locale } from "@/i18n/routing";
 
@@ -46,15 +48,35 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const userDoc = await getOrCreateUserDocument(db, { uid: user.uid, email: user.email });
 
-  // Refuse to issue a second checkout when the user already has an active Pro
+  // Refuse to issue a second checkout when the user already has an open Pro
   // subscription. Without this, clicking "Subscribe" twice produced two
   // parallel subscriptions on the same Firebase user (and the second one's
   // webhook simply overwrote the first), leaving the user double-charged.
-  if (userDoc.plan === "pro" && userDoc.subscriptionStatus === "active") {
+  // "Open" = anything not definitively over (active, trialing, past_due,
+  // incomplete...), so a past_due user can't stack a second subscription.
+  if (userDoc.plan === "pro" && userDoc.subscriptionStatus !== "canceled") {
     return NextResponse.json(
       { error: "You already have an active Pro subscription." },
       { status: 409 },
     );
+  }
+
+  // Firestore can drift (missed webhook, manual edits). Ask Stripe — the
+  // source of truth — whether this customer already has an open subscription,
+  // and self-heal the user doc if so.
+  if (userDoc.stripeCustomerId) {
+    try {
+      const openSub = await findOpenSubscription(userDoc.stripeCustomerId);
+      if (openSub) {
+        await applyStripeSubscriptionToUser(db, openSub, user.uid);
+        return NextResponse.json(
+          { error: "You already have an active Pro subscription." },
+          { status: 409 },
+        );
+      }
+    } catch (err) {
+      console.warn("Could not verify open subscriptions in Stripe", safeErrorMessage(err, "stripe_list_failed"));
+    }
   }
 
   let body: unknown = {};
@@ -64,10 +86,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     body = {};
   }
 
-  const affiliateCode = sanitizeAffiliateCode(
-    body && typeof body === "object" ? (body as { affiliateCode?: unknown }).affiliateCode : undefined,
-  );
   const locale = localeFromBody(body);
+
+  // Código de creador: se valida contra la colección `affiliates` y, si es
+  // válido, su Promotion Code de Stripe aplica el descuento real en el
+  // Checkout. Si el usuario escribió un código que no existe, se lo decimos
+  // en vez de cobrarle el precio completo en silencio.
+  const rawAffiliate =
+    body && typeof body === "object" ? (body as { affiliateCode?: unknown }).affiliateCode : undefined;
+  let affiliateCode: string | undefined;
+  let promotionCodeId: string | undefined;
+  if (typeof rawAffiliate === "string" && rawAffiliate.trim()) {
+    const normalized = normalizeAffiliateCode(rawAffiliate);
+    const affiliate = normalized ? await getActiveAffiliate(db, normalized) : null;
+    if (!affiliate) {
+      return NextResponse.json(
+        { error: "invalid_affiliate_code", reason: "invalid_affiliate_code" },
+        { status: 400 },
+      );
+    }
+    affiliateCode = affiliate.code;
+    promotionCodeId = affiliate.stripePromotionCodeId || undefined;
+  }
 
   try {
     const url = await createProCheckoutSession({
@@ -75,6 +115,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       email: user.email,
       existingCustomerId: userDoc.stripeCustomerId,
       affiliateCode,
+      promotionCodeId,
       successUrl: pricingReturnUrl(req, locale, "success"),
       cancelUrl: pricingReturnUrl(req, locale, "cancelled"),
     });

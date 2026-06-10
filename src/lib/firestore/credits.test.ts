@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyDailyResetIfDue, refundCredits, tryDeductCredits } from "@/lib/firestore/credits";
-import type { UserDocument } from "@/lib/firestore/schema";
+import { emptyUserStats, type UserDocument } from "@/lib/firestore/schema";
 
 function mkDoc(overrides?: Partial<UserDocument>): UserDocument {
   const now = Date.now();
@@ -13,14 +13,7 @@ function mkDoc(overrides?: Partial<UserDocument>): UserDocument {
       monthly: 0,
       monthlyResetAt: new Date(now + 86_400_000).toISOString(),
     },
-    stats: {
-      totalImagesGenerated: 0,
-      totalCreditsUsedFree: 0,
-      totalCreditsUsedPro: 0,
-      monthsSubscribed: 0,
-      googleGenerations: 0,
-      falGenerations: 0,
-    },
+    stats: emptyUserStats(),
     gallery: [],
     ...overrides,
   };

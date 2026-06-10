@@ -45,6 +45,19 @@ export function subscriptionStatusToApp(
   return "active";
 }
 
+// Acceso PRO real según el estado crudo de Stripe. past_due mantiene el acceso
+// como periodo de gracia mientras Stripe reintenta el cobro; incomplete (pago
+// inicial sin completar), unpaid, paused y canceled NO dan acceso.
+export function subscriptionGrantsProAccess(status: Stripe.Subscription.Status): boolean {
+  return status === "active" || status === "trialing" || status === "past_due";
+}
+
+// Estados que cuentan como "suscripción abierta" a efectos de bloquear un
+// segundo checkout: todo lo que no esté definitivamente terminado.
+export function isOpenSubscriptionStatus(status: Stripe.Subscription.Status): boolean {
+  return status !== "canceled" && status !== "incomplete_expired";
+}
+
 async function findUserRef(
   db: Firestore,
   args: {
@@ -76,16 +89,6 @@ async function findUserRef(
   return null;
 }
 
-async function customerMatches(
-  ref: DocumentReference,
-  expectedCustomerId: string,
-): Promise<boolean> {
-  const snap = await ref.get();
-  if (!snap.exists) return true;
-  const existing = (snap.data() as UserDocument).stripeCustomerId;
-  return !existing || existing === expectedCustomerId;
-}
-
 export async function applyStripeSubscriptionToUser(
   db: Firestore,
   sub: Stripe.Subscription,
@@ -102,7 +105,13 @@ export async function applyStripeSubscriptionToUser(
   });
   if (!ref) return { ok: false, reason: "user_not_found" };
 
-  if (!(await customerMatches(ref, customerId))) {
+  const snap = await ref.get();
+  const existing = snap.exists ? (snap.data() as UserDocument) : null;
+
+  // Defensa en profundidad: si el doc ya está vinculado a OTRO customer de
+  // Stripe, no lo tocamos (evita que metadata.uid manipulada reescriba el plan
+  // de otro usuario).
+  if (existing?.stripeCustomerId && existing.stripeCustomerId !== customerId) {
     return { ok: false, reason: "customer_mismatch", uid: ref.id };
   }
 
@@ -123,24 +132,56 @@ export async function applyStripeSubscriptionToUser(
         ? firstItem.current_period_end * 1000
         : now + 30 * 24 * 60 * 60 * 1000;
   const status = subscriptionStatusToApp(sub.status);
-  const grantsProAccess = status === "active" || status === "past_due";
+  const grantsProAccess = subscriptionGrantsProAccess(sub.status);
+  const subscriptionEndIso = new Date(subscriptionEnd).toISOString();
+
+  // Los créditos solo se rellenan al GANAR acceso PRO o al empezar un periodo
+  // de facturación nuevo. Un subscription.updated cualquiera (p. ej. marcar o
+  // desmarcar cancel_at_period_end) NO debe recargar los créditos ya gastados.
+  const samePaidPeriod =
+    grantsProAccess &&
+    existing?.plan === "pro" &&
+    existing.stripeSubscriptionId === sub.id &&
+    existing.subscriptionEnd === subscriptionEndIso;
+
+  const base: Partial<UserDocument> = {
+    plan: grantsProAccess ? "pro" : "free",
+    stripeCustomerId: customerId,
+    stripeSubscriptionId: sub.id,
+    subscriptionStatus: status,
+    cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
+    subscriptionStart: new Date(subscriptionStart).toISOString(),
+    subscriptionEnd: subscriptionEndIso,
+  };
+
+  // Atribución del código de creador: viaja en la metadata de la suscripción
+  // desde el checkout y se fija en el doc del usuario (el asiento de comisión
+  // mensual lo lee de aquí en invoice.payment_succeeded).
+  const affiliateCode =
+    typeof sub.metadata?.affiliateCode === "string" && sub.metadata.affiliateCode.trim()
+      ? sub.metadata.affiliateCode.trim().toUpperCase()
+      : null;
+  if (affiliateCode) {
+    base.affiliate = {
+      ...(existing?.affiliate ?? { discountActive: false }),
+      referredBy: affiliateCode,
+      code: affiliateCode,
+      discountActive: true,
+    };
+  }
 
   await ref.set(
-    {
-      plan: grantsProAccess ? "pro" : "free",
-      stripeCustomerId: customerId,
-      stripeSubscriptionId: sub.id,
-      subscriptionStatus: status,
-      cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
-      subscriptionStart: new Date(subscriptionStart).toISOString(),
-      subscriptionEnd: new Date(subscriptionEnd).toISOString(),
-      credits: {
-        daily: grantsProAccess ? cfg.credits.proDaily : cfg.credits.freeDaily,
-        dailyResetAt: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
-        monthly: grantsProAccess ? cfg.credits.proMonthly : 0,
-        monthlyResetAt: new Date(subscriptionEnd).toISOString(),
-      },
-    } satisfies Partial<UserDocument>,
+    samePaidPeriod
+      ? base
+      : {
+          ...base,
+          credits: {
+            daily: grantsProAccess ? cfg.credits.proDaily : cfg.credits.freeDaily,
+            dailyResetAt: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
+            monthly: grantsProAccess ? cfg.credits.proMonthly : 0,
+            monthlyResetAt: new Date(subscriptionEnd).toISOString(),
+          },
+        },
     { merge: true },
   );
 

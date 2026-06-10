@@ -25,6 +25,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     uid: user.uid,
     plan: doc.plan,
     subscriptionStatus: doc.subscriptionStatus ?? null,
+    cancelAtPeriodEnd: doc.cancelAtPeriodEnd ?? false,
     subscriptionStart: doc.subscriptionStart ?? null,
     subscriptionEnd: doc.subscriptionEnd ?? null,
     stripeCustomerId: doc.stripeCustomerId ?? null,

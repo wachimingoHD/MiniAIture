@@ -175,7 +175,9 @@ function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => vo
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    // Montaje diferido a un frame (mismo patrón que ResultLightbox): el portal
+    // solo existe en cliente y evitamos el setState síncrono dentro del efecto.
+    const frame = requestAnimationFrame(() => setMounted(true));
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -183,6 +185,7 @@ function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => vo
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
+      cancelAnimationFrame(frame);
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
     };

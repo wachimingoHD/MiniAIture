@@ -34,6 +34,37 @@ export interface UserStats {
   monthsSubscribed: number;
   googleGenerations: number;
   falGenerations: number;
+  /** Peticiones de generación completadas (una por click en Generar). */
+  totalGenerations: number;
+  /** Generaciones en modo ahorro (cola flex/fetch). */
+  saverGenerations: number;
+  /** Generaciones con alta calidad (1K nativo). */
+  highQualityGenerations: number;
+  /** Generaciones con alta resolución (resultado final 2K). */
+  highResGenerations: number;
+  /** Usos del sugeridor de estilo con IA. */
+  styleSuggestions: number;
+  /** Usos del sugeridor de contenido con IA. */
+  contentSuggestions: number;
+}
+
+// Stats a cero para docs nuevos y para rellenar docs antiguos que no tengan
+// alguno de los campos (los contadores nuevos son opcionales en Firestore).
+export function emptyUserStats(): UserStats {
+  return {
+    totalImagesGenerated: 0,
+    totalCreditsUsedFree: 0,
+    totalCreditsUsedPro: 0,
+    monthsSubscribed: 0,
+    googleGenerations: 0,
+    falGenerations: 0,
+    totalGenerations: 0,
+    saverGenerations: 0,
+    highQualityGenerations: 0,
+    highResGenerations: 0,
+    styleSuggestions: 0,
+    contentSuggestions: 0,
+  };
 }
 
 // @deprecated — las generaciones se han movido a la colección `generations`
@@ -72,6 +103,7 @@ export const USERS_COLLECTION = "users";
 export const GENERATIONS_COLLECTION = "generations";
 export const CREDIT_TRANSACTIONS_COLLECTION = "creditTransactions";
 export const AFFILIATES_COLLECTION = "affiliates";
+export const AFFILIATE_COMMISSIONS_COLLECTION = "affiliateCommissions";
 export const RATE_LIMITS_COLLECTION = "rateLimits";
 
 export const MAX_PRO_GALLERY_ENTRIES = 200;
@@ -114,14 +146,7 @@ export function buildInitialUserDocument(args: {
     affiliate: args.referredBy
       ? { referredBy: args.referredBy, code: args.referredBy, isAffiliate: false, discountActive: true }
       : { code: null, isAffiliate: false, discountActive: false },
-    stats: {
-      totalImagesGenerated: 0,
-      totalCreditsUsedFree: 0,
-      totalCreditsUsedPro: 0,
-      monthsSubscribed: 0,
-      googleGenerations: 0,
-      falGenerations: 0,
-    },
+    stats: emptyUserStats(),
   };
 }
 

@@ -5,6 +5,7 @@
 // Las miniaturas vienen de getPublicGenerations() (isPublic == true).
 // =============================================================================
 
+import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
@@ -13,6 +14,20 @@ import PenguinThumbnailMarquee, { type MarqueeThumb } from "@/components/ui/Peng
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  return {
+    alternates: {
+      canonical: `/${locale}`,
+      languages: { en: "/en", es: "/es", "x-default": "/en" },
+    },
+  };
+}
 
 async function loadPublicThumbs(anonymousLabel: string): Promise<MarqueeThumb[]> {
   const db = adminFirestore();

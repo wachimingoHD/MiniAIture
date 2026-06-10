@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import PageHeader from "@/components/ui/PageHeader";
 import {
   getCurrentIdToken,
   signInWithGoogle,
@@ -27,6 +26,7 @@ interface PricingInfo {
 interface BillingStatus {
   plan?: "free" | "pro";
   subscriptionStatus?: string | null;
+  cancelAtPeriodEnd?: boolean;
 }
 
 interface SyncPayload {
@@ -80,11 +80,15 @@ export default function PricingPage() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [plan, setPlan] = useState<"free" | "pro" | null>(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
+  const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState(false);
   const [pricingInfo, setPricingInfo] = useState<PricingInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [affiliateCode, setAffiliateCode] = useState("");
   const checkoutSyncedRef = useRef(false);
-  const alreadyPro = plan === "pro" && (subscriptionStatus === "active" || subscriptionStatus === "trialing");
+  // Cualquier suscripción no cancelada (active, trialing, past_due…) cuenta
+  // como "ya eres PRO": comprar otra crearía una segunda suscripción paralela.
+  const alreadyPro = plan === "pro" && subscriptionStatus !== "canceled";
 
   const refreshBillingStatus = useCallback(async (token: string): Promise<BillingStatus | null> => {
     try {
@@ -95,6 +99,7 @@ export default function PricingPage() {
       const payload = (await res.json()) as BillingStatus;
       setPlan(payload.plan ?? null);
       setSubscriptionStatus(payload.subscriptionStatus ?? null);
+      setCancelAtPeriodEnd(payload.cancelAtPeriodEnd ?? false);
       return payload;
     } catch {
       // ignore non-critical status read errors
@@ -173,6 +178,13 @@ export default function PricingPage() {
     return () => unsubscribe();
   }, [refreshBillingStatus, syncCheckoutIfNeeded]);
 
+  // Prefill del código de creador desde el link compartido (?ref=CODIGO).
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- prefill único desde la URL tras montar */
+    if (ref) setAffiliateCode(ref.toUpperCase());
+  }, []);
+
   useEffect(() => {
     let alive = true;
     void fetch("/api/billing/pricing")
@@ -204,11 +216,15 @@ export default function PricingPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ locale }),
+        body: JSON.stringify({ locale, affiliateCode: affiliateCode.trim() || undefined }),
       });
-      const payload = (await res.json()) as { url?: string; error?: string };
+      const payload = (await res.json()) as { url?: string; error?: string; reason?: string };
       if (!res.ok || !payload.url) {
-        setError(payload.error ?? t("checkoutFailed"));
+        setError(
+          payload.reason === "invalid_affiliate_code"
+            ? t("affiliateInvalid")
+            : payload.error ?? t("checkoutFailed"),
+        );
         return;
       }
       window.location.href = payload.url;
@@ -219,9 +235,37 @@ export default function PricingPage() {
     }
   }
 
+  // Quita la cancelación programada de la suscripción existente (no cobra nada:
+  // el periodo en curso ya está pagado). Es el camino para "volver a suscribirse"
+  // cuando aún eres PRO con cancelación pendiente.
+  async function resumeSubscription(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      const token = authToken ?? (await getCurrentIdToken());
+      if (!token) {
+        setError(t("signInRequired"));
+        return;
+      }
+      const res = await fetch("/api/billing/reactivate", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !payload.ok) {
+        setError(payload.error ?? t("resumeFailed"));
+        return;
+      }
+      setCancelAtPeriodEnd(false);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="mx-auto max-w-[980px] px-4 py-8 md:px-8 md:py-12">
-      <PageHeader subtitle={t("headerSubtitle")} />
       <div className="mt-6">
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
         <p className="mt-1 text-sm text-[var(--color-text-muted)]">
@@ -309,14 +353,46 @@ export default function PricingPage() {
             <li>{t("proFeature4")}</li>
             <li>{t("proFeature5")}</li>
           </ul>
-          <button
-            type="button"
-            disabled={busy || !authEmail || alreadyPro}
-            onClick={() => void startCheckout()}
-            className="mt-5 w-full rounded-md bg-[var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--color-accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {alreadyPro ? t("alreadyAcquired") : busy ? t("openingCheckout") : t("subscribeToPro")}
-          </button>
+          <div className="mt-5">
+            <label className="block text-xs font-medium text-[var(--color-text-secondary)]" htmlFor="affiliate-code">
+              {t("affiliateLabel")}
+            </label>
+            <input
+              id="affiliate-code"
+              type="text"
+              value={affiliateCode}
+              maxLength={64}
+              onChange={(e) => setAffiliateCode(e.target.value.toUpperCase())}
+              placeholder={t("affiliatePlaceholder")}
+              disabled={busy || alreadyPro}
+              className="mt-1.5 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel)] px-3 py-2 text-sm uppercase tracking-wide placeholder:normal-case placeholder:tracking-normal disabled:opacity-50"
+            />
+            {affiliateCode.trim() && (
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{t("affiliateHint")}</p>
+            )}
+          </div>
+          {alreadyPro && cancelAtPeriodEnd ? (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void resumeSubscription()}
+                className="mt-3 w-full rounded-md bg-[var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--color-accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy ? t("resuming") : t("resumeSubscription")}
+              </button>
+              <p className="mt-2 text-xs text-[var(--color-text-muted)]">{t("resumeNote")}</p>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={busy || !authEmail || alreadyPro}
+              onClick={() => void startCheckout()}
+              className="mt-3 w-full rounded-md bg-[var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--color-accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {alreadyPro ? t("alreadyAcquired") : busy ? t("openingCheckout") : t("subscribeToPro")}
+            </button>
+          )}
           {!authEmail && (
             <p className="mt-2 text-xs text-[var(--color-text-muted)]">
               {t("signInFirst")}

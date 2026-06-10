@@ -259,6 +259,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           provider: "google",
           generatedImages: 1,
           chargedCredits,
+          modes: deriveModesFromParams(params),
         });
         return NextResponse.json({
           providerUsed: "google",
@@ -436,6 +437,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           provider: providerForStats,
           generatedImages: finalImages.length,
           chargedCredits,
+          modes: deriveModesFromParams(params),
         });
 
         const storageCfg = getFirebaseStorageConfig();

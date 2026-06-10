@@ -11,7 +11,6 @@ import { Link } from "@/i18n/navigation";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
 import { getPublicGenerations, type GenerationWithId } from "@/lib/firestore/generations";
 import { generateAltText } from "@/lib/seo";
-import PageHeader from "@/components/ui/PageHeader";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +25,10 @@ export async function generateMetadata({
   return {
     title: t("title"),
     description: t("description"),
-    alternates: { canonical: `/${locale}/gallery` },
+    alternates: {
+      canonical: `/${locale}/gallery`,
+      languages: { en: "/en/gallery", es: "/es/gallery", "x-default": "/en/gallery" },
+    },
     openGraph: {
       title: t("ogTitle"),
       description: t("ogDescription"),
@@ -57,7 +59,6 @@ export default async function PublicGalleryPage({
 
   return (
     <main className="mx-auto max-w-[1200px] px-4 py-8 md:px-8 md:py-12">
-      <PageHeader subtitle={t("headerSubtitle")} />
       <div className="mt-6">
         <h1 className="text-2xl font-semibold tracking-tight">
           {t("title")}

@@ -7,7 +7,9 @@ import {
   RATE_LIMITS_COLLECTION,
   USERS_COLLECTION,
   type UserDocument,
+  type UserStats,
   buildInitialUserDocument,
+  emptyUserStats,
 } from "@/lib/firestore/schema";
 import { applyResetsIfDue, refundCredits, tryDeductCredits } from "@/lib/firestore/credits";
 import { writeCreditTransactionInTx } from "@/lib/firestore/credit-transactions";
@@ -240,20 +242,16 @@ export async function recordGenerationSuccess(db: Firestore, args: {
   provider: Provider;
   generatedImages: number;
   chargedCredits: number;
+  // Modos efectivos de la generación, para contabilidad posterior en Firestore.
+  modes?: { saver: boolean; highQuality: boolean; highRes: boolean };
 }): Promise<void> {
   const ref = userRef(db, args.uid);
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) return;
     const current = snap.data() as UserDocument;
-    const stats = current.stats ?? {
-      totalImagesGenerated: 0,
-      totalCreditsUsedFree: 0,
-      totalCreditsUsedPro: 0,
-      monthsSubscribed: 0,
-      googleGenerations: 0,
-      falGenerations: 0,
-    };
+    // Docs antiguos pueden no tener los contadores nuevos: se rellenan a 0.
+    const stats = { ...emptyUserStats(), ...(current.stats ?? {}) };
 
     tx.set(
       ref,
@@ -273,11 +271,29 @@ export async function recordGenerationSuccess(db: Firestore, args: {
             args.provider === "google" ? stats.googleGenerations + 1 : stats.googleGenerations,
           falGenerations:
             args.provider === "fal" ? stats.falGenerations + 1 : stats.falGenerations,
+          totalGenerations: stats.totalGenerations + 1,
+          saverGenerations: stats.saverGenerations + (args.modes?.saver ? 1 : 0),
+          highQualityGenerations: stats.highQualityGenerations + (args.modes?.highQuality ? 1 : 0),
+          highResGenerations: stats.highResGenerations + (args.modes?.highRes ? 1 : 0),
         },
       } satisfies Partial<UserDocument>,
       { merge: true },
     );
   });
+}
+
+// Incrementa un contador suelto de stats (p. ej. usos de los sugeridores).
+// FieldValue.increment trata el campo ausente como 0, así que funciona también
+// en documentos antiguos sin el contador.
+export async function incrementUserStat(
+  db: Firestore,
+  uid: string,
+  field: keyof Pick<UserStats, "styleSuggestions" | "contentSuggestions">,
+): Promise<void> {
+  await userRef(db, uid).set(
+    { stats: { [field]: FieldValue.increment(1) } },
+    { merge: true },
+  );
 }
 
 function dailyRateLimitDocId(ip: string): string {

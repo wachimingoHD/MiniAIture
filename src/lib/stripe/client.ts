@@ -57,6 +57,9 @@ export interface CreateCheckoutSessionInput {
   // produced a fresh customer and broke 1:1 user↔customer accounting.
   existingCustomerId?: string;
   affiliateCode?: string;
+  // Stripe Promotion Code (promo_...) ya validado contra `affiliates`. Si se
+  // pasa, el descuento del creador se aplica automáticamente en el Checkout.
+  promotionCodeId?: string;
   successUrl?: string;
   cancelUrl?: string;
 }
@@ -124,6 +127,14 @@ export async function createProCheckoutSession(input: CreateCheckoutSessionInput
     sessionConfig.customer_email = input.email;
   }
 
+  // Descuento del creador (validado en nuestro backend) o, si no hay código,
+  // campo libre de códigos en el Checkout. Stripe no permite ambos a la vez.
+  if (input.promotionCodeId) {
+    sessionConfig.discounts = [{ promotion_code: input.promotionCodeId }];
+  } else {
+    sessionConfig.allow_promotion_codes = true;
+  }
+
   const session = await stripe.checkout.sessions.create(sessionConfig);
 
   if (!session.url) throw new Error("Stripe checkout session created without URL.");
@@ -144,6 +155,18 @@ export async function retrieveSubscription(subscriptionId: string): Promise<Stri
   const stripe = getStripeClient();
   if (!stripe) throw new Error("Stripe is not configured. Set STRIPE_SECRET_KEY.");
   return stripe.subscriptions.retrieve(subscriptionId);
+}
+
+// Busca una suscripción "abierta" (cualquier estado que no sea canceled /
+// incomplete_expired) del customer. Es la fuente de verdad para bloquear un
+// segundo checkout aunque Firestore esté desincronizado.
+export async function findOpenSubscription(customerId: string): Promise<Stripe.Subscription | null> {
+  const stripe = getStripeClient();
+  if (!stripe) return null;
+  const subs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
+  return (
+    subs.data.find((s) => s.status !== "canceled" && s.status !== "incomplete_expired") ?? null
+  );
 }
 
 export async function getProPriceSnapshot(): Promise<StripePriceSnapshot | null> {
@@ -175,6 +198,14 @@ export async function cancelSubscriptionAtPeriodEnd(subscriptionId: string): Pro
   const stripe = getStripeClient();
   if (!stripe) throw new Error("Stripe no configurado: faltan STRIPE_* env vars.");
   await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+}
+
+// Deshace una cancelación programada: la suscripción vuelve a renovarse con
+// normalidad. No cobra nada (el periodo en curso ya está pagado).
+export async function resumeSubscription(subscriptionId: string): Promise<void> {
+  const stripe = getStripeClient();
+  if (!stripe) throw new Error("Stripe no configurado: faltan STRIPE_* env vars.");
+  await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: false });
 }
 
 export function verifyWebhookSignature(payload: string, signature: string): Stripe.Event {

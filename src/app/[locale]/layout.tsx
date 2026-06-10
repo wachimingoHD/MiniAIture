@@ -5,6 +5,7 @@ import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import "../globals.css";
 import Sidebar from "@/components/ui/Sidebar";
+import PageHeader from "@/components/ui/PageHeader";
 import { SITE_URL } from "@/lib/seo";
 import { routing } from "@/i18n/routing";
 
@@ -60,13 +61,9 @@ export async function generateMetadata({
       title: t("title"),
       description: t("twitterDescription"),
     },
-    alternates: {
-      canonical: `/${locale}`,
-      languages: {
-        en: "/en",
-        es: "/es",
-      },
-    },
+    // OJO: nada de `alternates.canonical` aquí. Un canonical en el layout se
+    // hereda en TODAS las subpáginas y las marcaría como duplicados de la home.
+    // Cada página define su propio canonical + hreflang.
     robots: { index: true, follow: true },
   };
 }
@@ -115,7 +112,10 @@ export default async function LocaleLayout({
         />
         <NextIntlClientProvider>
           <Sidebar />
-          <div className="min-h-screen pl-16">{children}</div>
+          <div className="min-h-screen pl-16">
+            <PageHeader />
+            {children}
+          </div>
         </NextIntlClientProvider>
       </body>
     </html>

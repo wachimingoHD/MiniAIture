@@ -3,32 +3,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyWebhookSignature } from "@/lib/stripe/client";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
 import { getRuntimeConfig } from "@/lib/config/runtime";
-import type { UserDocument } from "@/lib/firestore/schema";
+import { emptyUserStats, type UserDocument } from "@/lib/firestore/schema";
+import { recordAffiliateCommission } from "@/lib/firestore/affiliates";
 import type { DocumentReference, Firestore } from "firebase-admin/firestore";
 import { FieldValue } from "firebase-admin/firestore";
 import { safeErrorMessage } from "@/lib/server/errors";
-import { syncCheckoutSessionToUser } from "@/lib/stripe/subscription-sync";
+import {
+  applyStripeSubscriptionToUser,
+  syncCheckoutSessionToUser,
+} from "@/lib/stripe/subscription-sync";
 
 export const runtime = "nodejs";
 
 const PROCESSED_EVENTS_COLLECTION = "stripe_processed_events";
 
-// Stripe Subscription's current_period_* fields moved to SubscriptionItem in
-// recent API versions. We read them defensively without relying on the
-// generated types, which lag behind those changes.
-interface SubscriptionPeriodView {
-  current_period_start?: number;
-  current_period_end?: number;
-  start_date?: number;
-}
-
 interface InvoicePeriodView {
   subscription?: string;
   period_end?: number;
-}
-
-function asPeriodView(sub: Stripe.Subscription): SubscriptionPeriodView {
-  return sub as unknown as SubscriptionPeriodView;
+  amount_paid?: number;
+  // Snapshot de la metadata de la suscripción que Stripe incluye en la factura
+  // (la forma cambió entre versiones de API: leemos ambas defensivamente).
+  subscription_details?: { metadata?: Record<string, string> };
+  parent?: { subscription_details?: { metadata?: Record<string, string> } };
 }
 
 function asInvoiceView(invoice: Stripe.Invoice): InvoicePeriodView {
@@ -79,58 +75,6 @@ async function customerMatches(
   return !existing || existing === expectedCustomerId;
 }
 
-function subscriptionStatusToApp(status: Stripe.Subscription.Status): UserDocument["subscriptionStatus"] {
-  if (status === "past_due" || status === "unpaid") return "past_due";
-  if (status === "canceled") return "canceled";
-  return "active";
-}
-
-async function onSubscriptionCreated(db: Firestore, sub: Stripe.Subscription): Promise<void> {
-  const uid = (sub.metadata?.uid as string | undefined) ?? null;
-  const customerId = customerIdOf(sub);
-  const ref = await findUserRef(db, {
-    uid,
-    stripeCustomerId: customerId,
-    stripeSubscriptionId: sub.id,
-  });
-  if (!ref) return;
-  if (!(await customerMatches(ref, customerId))) {
-    console.warn("Stripe webhook customer mismatch for user", ref.id);
-    return;
-  }
-
-  const cfg = getRuntimeConfig();
-  const subView = asPeriodView(sub);
-  const subscriptionStart =
-    typeof subView.current_period_start === "number"
-      ? subView.current_period_start * 1000
-      : (subView.start_date ?? Math.floor(Date.now() / 1000)) * 1000;
-  const subscriptionEnd =
-    typeof subView.current_period_end === "number"
-      ? subView.current_period_end * 1000
-      : Date.now() + 30 * 24 * 60 * 60 * 1000;
-  const now = Date.now();
-
-  await ref.set(
-    {
-      plan: "pro",
-      stripeCustomerId: customerId,
-      stripeSubscriptionId: sub.id,
-      subscriptionStatus: subscriptionStatusToApp(sub.status),
-      cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
-      subscriptionStart: new Date(subscriptionStart).toISOString(),
-      subscriptionEnd: new Date(subscriptionEnd).toISOString(),
-      credits: {
-        daily: cfg.credits.proDaily,
-        dailyResetAt: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
-        monthly: cfg.credits.proMonthly,
-        monthlyResetAt: new Date(subscriptionEnd).toISOString(),
-      },
-    } satisfies Partial<UserDocument>,
-    { merge: true },
-  );
-}
-
 async function onSubscriptionDeleted(db: Firestore, sub: Stripe.Subscription): Promise<void> {
   const customerId = customerIdOf(sub);
   const ref = await findUserRef(db, {
@@ -149,6 +93,10 @@ async function onSubscriptionDeleted(db: Firestore, sub: Stripe.Subscription): P
       plan: "free",
       subscriptionStatus: "canceled",
       cancelAtPeriodEnd: false,
+      // El bolsillo mensual es un beneficio PRO: al terminar la suscripción se
+      // retira (el diario se renormaliza solo al allowance FREE en el próximo
+      // reset diario).
+      credits: { monthly: 0 } as UserDocument["credits"],
     } satisfies Partial<UserDocument>,
     { merge: true },
   );
@@ -168,18 +116,15 @@ async function onInvoicePaid(db: Firestore, invoice: Stripe.Invoice): Promise<vo
   }
 
   const cfg = getRuntimeConfig();
+  // Capturado dentro de la transacción para registrar la comisión del creador
+  // (si lo hay) después de aplicar la renovación.
+  let referredBy: string | null = null;
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) return;
     const current = snap.data() as UserDocument;
-    const currentStats = current.stats ?? {
-      totalImagesGenerated: 0,
-      totalCreditsUsedFree: 0,
-      totalCreditsUsedPro: 0,
-      monthsSubscribed: 0,
-      googleGenerations: 0,
-      falGenerations: 0,
-    };
+    referredBy = current.affiliate?.referredBy?.trim().toUpperCase() || null;
+    const currentStats = { ...emptyUserStats(), ...(current.stats ?? {}) };
 
     const invoicePeriodEnd =
       typeof invoiceView.period_end === "number"
@@ -215,6 +160,25 @@ async function onInvoicePaid(db: Firestore, invoice: Stripe.Invoice): Promise<vo
       { merge: true },
     );
   });
+
+  // Comisión del creador por esta factura. En la PRIMERA factura el doc del
+  // usuario puede no tener aún la atribución (carrera entre webhooks), así que
+  // caemos a la metadata de la suscripción incluida en la propia factura.
+  const metadataCode =
+    invoiceView.subscription_details?.metadata?.affiliateCode ??
+    invoiceView.parent?.subscription_details?.metadata?.affiliateCode ??
+    null;
+  const commissionCode = referredBy ?? (metadataCode ? metadataCode.trim().toUpperCase() : null);
+  const amountPaid = typeof invoiceView.amount_paid === "number" ? invoiceView.amount_paid : 0;
+  if (commissionCode && amountPaid > 0 && invoice.id) {
+    await recordAffiliateCommission(db, {
+      code: commissionCode,
+      uid: ref.id,
+      invoiceId: invoice.id,
+      amountPaidMinor: amountPaid,
+      currency: invoice.currency ?? "eur",
+    });
+  }
 }
 
 async function onInvoiceFailed(db: Firestore, invoice: Stripe.Invoice): Promise<void> {
@@ -239,7 +203,9 @@ async function dispatch(db: Firestore, event: Stripe.Event): Promise<void> {
       return;
     case "customer.subscription.created":
     case "customer.subscription.updated":
-      await onSubscriptionCreated(db, event.data.object as Stripe.Subscription);
+      // Misma lógica que el resto de syncs: el plan depende del estado real de
+      // la suscripción y los créditos solo se rellenan en periodos nuevos.
+      await applyStripeSubscriptionToUser(db, event.data.object as Stripe.Subscription);
       return;
     case "customer.subscription.deleted":
       await onSubscriptionDeleted(db, event.data.object as Stripe.Subscription);

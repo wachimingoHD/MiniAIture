@@ -59,7 +59,14 @@ export async function generateMetadata({
   return {
     title,
     description: t("description", { desc }),
-    alternates: { canonical: `/${locale}/gallery/${generationId}` },
+    alternates: {
+      canonical: `/${locale}/gallery/${generationId}`,
+      languages: {
+        en: `/en/gallery/${generationId}`,
+        es: `/es/gallery/${generationId}`,
+        "x-default": `/en/gallery/${generationId}`,
+      },
+    },
     openGraph: {
       title,
       description: desc,

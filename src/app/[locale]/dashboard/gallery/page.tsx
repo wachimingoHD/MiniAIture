@@ -10,7 +10,6 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import MascotEmpty from "@/components/mascots/MascotEmpty";
 import PublishConfirmModal from "@/components/ui/PublishConfirmModal";
-import PageHeader from "@/components/ui/PageHeader";
 import { signInWithGoogle, signOutUser, subscribeToAuthState } from "@/lib/auth/firebase-client";
 
 interface GenerationItem {
@@ -171,7 +170,6 @@ export default function PersonalGalleryPage() {
 
   return (
     <main className="mx-auto max-w-[1200px] px-4 py-8 md:px-8 md:py-12">
-      <PageHeader subtitle={t("headerSubtitle")} />
       <div className="mt-6">
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
         <p className="mt-1 text-sm text-[var(--color-text-muted)]">{t("subtitle")}</p>
