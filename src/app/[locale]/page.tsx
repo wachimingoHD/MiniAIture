@@ -34,13 +34,13 @@ async function loadPublicThumbs(anonymousLabel: string): Promise<MarqueeThumb[]>
   if (!db) return [];
   try {
     // Muestra aleatoria de TODA la galería pública (no solo las más copiadas).
-    // El muestreo por cursor aleatorio lee como mucho 2×24 docs: misma carga
-    // que la consulta ordenada de antes, distinto resultado en cada visita.
-    const gens: GenerationWithId[] = await getRandomPublicGenerations(db, { limit: 24 });
+    // Leemos 48 para compensar el filtrado de verticales de la portada.
+    const gens: GenerationWithId[] = await getRandomPublicGenerations(db, { limit: 48 });
+    const horizontalGens = gens.filter((g) => g.aspectRatio !== "9:16");
 
     // Nombre del autor: lo buscamos en la colección `users` (deduplicado).
     // (La foto del autor no se guarda aún; el modal usa avatar con inicial.)
-    const userIds = [...new Set(gens.map((g) => g.userId).filter(Boolean))];
+    const userIds = [...new Set(horizontalGens.map((g) => g.userId).filter(Boolean))];
     const names = new Map<string, string>();
     await Promise.all(
       userIds.map(async (uid) => {
@@ -54,13 +54,18 @@ async function loadPublicThumbs(anonymousLabel: string): Promise<MarqueeThumb[]>
       }),
     );
 
-    return gens.map((g) => ({
-      id: g.id,
-      imageUrl: g.imageUrl,
-      prompt: g.videoTitle ?? g.userPrompt,
-      stylePrompt: g.stylePrompt,
-      authorName: names.get(g.userId) ?? anonymousLabel,
-    }));
+    return horizontalGens.map((g) => {
+      const title = g.videoTitle?.trim() || undefined;
+      return {
+        id: g.id,
+        imageUrl: g.imageUrl,
+        title,
+        prompt: title,
+        contentPrompt: g.userPrompt,
+        stylePrompt: g.stylePrompt,
+        authorName: names.get(g.userId) ?? anonymousLabel,
+      };
+    });
   } catch {
     return [];
   }

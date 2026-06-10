@@ -8,6 +8,50 @@ Format: `YYYY-MM-DD` headers (newest on top). Each entry is a bullet list. When 
 
 ---
 
+## 2026-06-10 - Portada: modal de miniaturas y filtro de verticales
+
+- `src/app/[locale]/page.tsx` ya no manda `userPrompt` como título de las miniaturas de portada. Si `videoTitle` viene vacío o `null`, el modal no muestra encabezado y la descripción queda solo como contenido.
+- El modal de `src/components/ui/PenguinThumbnailMarquee.tsx` separa ahora `Contenido` y `Estilo usado por la IA` en recuadros propios. El contenido aparece encima del estilo, con el mismo tratamiento visual.
+- Las nuevas generaciones guardan `aspectRatio` en `generations` desde `src/app/api/generate/route.ts` y `src/lib/firestore/generations.ts`. Esto permite que la portada filtre de entrada las `9:16`.
+- Para generaciones antiguas que todavía no tienen `aspectRatio`, el carrusel mantiene una segunda protección en cliente: cuando una miniatura carga y `naturalHeight > naturalWidth`, se elimina de las filas y se cierra el modal si justo estaba seleccionada. Esto evita que imágenes verticales legacy sigan apareciendo en la home.
+
+## 2026-06-10 - Ajustes visuales de Comunidad, Mi galería y errores de generación
+
+### Retoque posterior: acciones bajo el estilo en vertical
+- El detalle público de Comunidad se reorganizó de nuevo para verticales: las acciones `Usar contenido`, `Usar estilo`, `Usar ambos` y el contador de usos ya no ocupan una columna junto a la imagen.
+- Nuevo componente cliente `src/app/[locale]/gallery/[generationId]/generation-detail-content.tsx` detecta orientación y renderiza:
+  - horizontal: acciones debajo de la imagen;
+  - vertical: imagen más ancha/alta (`max-h-[76vh]`) y acciones debajo del bloque `Estilo` en el lateral.
+- `src/app/[locale]/gallery/[generationId]/generation-media.tsx` fue sustituido por este componente de detalle completo para poder coordinar imagen, contenido, estilo y acciones desde el mismo estado de orientación.
+- Ajuste final: las acciones pasan siempre debajo de `Contenido`/`Estilo` en el lateral, porque algunas imágenes visualmente verticales llegan con un lienzo horizontal y no deben depender de `naturalWidth/naturalHeight`. El contenedor sube a `max-w-[1240px]` y la imagen puede crecer hasta `76-78vh`.
+
+### Comunidad: detalle público de imagen
+- `src/app/[locale]/gallery/[generationId]/page.tsx` deja de renderizar la imagen pública con `aspect-video` + `object-cover`; eso recortaba las imágenes verticales como si fueran horizontales.
+- Nuevo componente cliente `src/app/[locale]/gallery/[generationId]/generation-media.tsx`:
+  - mide `naturalWidth/naturalHeight` al cargar la imagen;
+  - muestra horizontales con acciones debajo;
+  - muestra verticales sin recorte, con altura limitada (`max-h-[72vh]`) y acciones a la derecha en desktop;
+  - mantiene acciones debajo en pantallas estrechas.
+- El `article` usa `items-start` para que la tarjeta de imagen no se estire hasta la altura del panel lateral. Esto elimina el bloque blanco vacío que aparecía bajo los botones.
+- Se quitó el título visible del detalle porque duplicaba el contenido (`userPrompt`). La información lateral empieza ahora por el autor y luego `Contenido` / `Estilo`.
+
+### Mi galería: modal de detalle
+- `src/app/[locale]/dashboard/gallery/page.tsx` se reescribió de forma equivalente para sanear el layout del modal.
+- El modal detecta orientación al cargar la imagen seleccionada:
+  - vertical: imagen centrada, sin recorte, `max-h-[70vh]`, acciones a la derecha;
+  - horizontal: imagen contenida con `max-h-[62vh]`, acciones debajo de la imagen, descripción/estilo a la derecha.
+- El contenedor del modal tiene `max-h-[calc(100vh-2rem)]` y `overflow-y-auto` para que ninguna vertical se salga de pantalla.
+
+### Generador: errores visibles en el resultado
+- `src/app/[locale]/generate/page.tsx` sigue mostrando `generationError` junto al botón de generar.
+- Además, `ResultPanel` recibe ese error y lo renderiza debajo del panel de resultado (`GenerationErrorNotice`), tanto si no hay resultado, si está generando o si ya existe una última imagen. Así el usuario puede verlo aunque esté mirando la zona derecha/superior del resultado.
+
+### Validación
+- `npm run typecheck` OK.
+- `npm run test` OK: 10 archivos, 54 tests.
+- `npx eslint` sobre archivos modificados OK con un warning preexistente en `dashboard/gallery/page.tsx` (`react-hooks/exhaustive-deps` sobre `loadGallery`).
+- `npm run build` OK. Persiste solo el warning conocido de Next 16 sobre `middleware` deprecado a favor de `proxy`.
+
 ## 2026-06-10 - Sugerencias IA con deshacer, formato vertical y ajustes de Comunidad/Generador
 
 Entrada añadida tras cambios recientes de Claude y esta pasada de Codex sobre el flujo de generación.

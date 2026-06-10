@@ -1,10 +1,5 @@
 "use client";
 
-// Galería personal del usuario (doc §5.1)
-// - FREE: últimos 30 (el backend ya acota); aviso de límite.
-// - PRO: paginación por cursor ("Cargar más").
-// - Click en miniatura -> vista expandida con detalles.
-
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
@@ -35,6 +30,8 @@ interface GalleryResponse {
   images?: GenerationItem[];
 }
 
+type ImageOrientation = "horizontal" | "vertical";
+
 export default function PersonalGalleryPage() {
   const t = useTranslations("galleryPersonal");
   const tAuth = useTranslations("auth");
@@ -48,9 +45,9 @@ export default function PersonalGalleryPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<GenerationItem | null>(null);
+  const [selectedOrientation, setSelectedOrientation] = useState<ImageOrientation>("horizontal");
   const [actionBusy, setActionBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
-  // Confirmación con aviso antes de publicar (no hace falta para hacer privada).
   const [confirmPublish, setConfirmPublish] = useState(false);
 
   useEffect(() => {
@@ -168,6 +165,80 @@ export default function PersonalGalleryPage() {
     }
   }
 
+  function renderSelectedActions(item: GenerationItem) {
+    return (
+      <div className="space-y-3 text-sm">
+        <p className="text-[var(--color-text-muted)]">
+          <strong className="text-[var(--color-text-primary)]">{t("visibility")}</strong>{" "}
+          {item.isPublic ? (
+            <>
+              {t("public")}{" "}
+              <span aria-hidden>·</span>{" "}
+              <Link href={`/gallery/${item.id}`} className="text-[var(--color-accent)] hover:underline">
+                {t("viewInGallery")}
+              </Link>
+            </>
+          ) : (
+            t("private")
+          )}
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={actionBusy}
+            onClick={() => void downloadImage(item)}
+            className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 font-semibold text-white hover:bg-[var(--color-accent-strong)] disabled:opacity-50"
+          >
+            {t("download")}
+          </button>
+          <button
+            type="button"
+            disabled={actionBusy}
+            onClick={() => {
+              if (item.isPublic) {
+                void togglePublish(item);
+              } else {
+                setConfirmPublish(true);
+              }
+            }}
+            className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 hover:border-[var(--color-accent)] disabled:opacity-50"
+          >
+            {item.isPublic ? t("makePrivate") : t("publish")}
+          </button>
+          <button
+            type="button"
+            disabled={actionBusy}
+            onClick={() => void removeItem(item)}
+            className="rounded-md border border-[var(--color-danger)]/50 px-3 py-1.5 text-[var(--color-danger)] hover:border-[var(--color-danger)] disabled:opacity-50"
+          >
+            {t("delete")}
+          </button>
+        </div>
+
+        {confirmPublish && !item.isPublic && (
+          <PublishConfirmModal
+            busy={actionBusy}
+            onCancel={() => setConfirmPublish(false)}
+            onConfirm={() => void togglePublish(item)}
+          />
+        )}
+        {!item.isPublic && !confirmPublish && (
+          <p className="text-[11px] text-[var(--color-text-muted)]">{t("publishRequiresPro")}</p>
+        )}
+        {actionMsg && <p className="text-xs text-[var(--color-text-secondary)]">{actionMsg}</p>}
+        <a
+          href={item.imageUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-block text-[var(--color-accent)] hover:underline"
+        >
+          {t("openOriginal")}
+        </a>
+      </div>
+    );
+  }
+
   return (
     <main className="mx-auto max-w-[1200px] px-4 py-8 md:px-8 md:py-12">
       <div className="mt-6">
@@ -180,7 +251,9 @@ export default function PersonalGalleryPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm">{authEmail}</p>
-              <p className="text-xs text-[var(--color-text-muted)]">{t("planLabel", { plan: plan ? plan.toUpperCase() : "—" })}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                {t("planLabel", { plan: plan ? plan.toUpperCase() : "-" })}
+              </p>
             </div>
             <button
               type="button"
@@ -254,6 +327,7 @@ export default function PersonalGalleryPage() {
                 className="cursor-pointer overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)]"
                 onClick={() => {
                   setSelected(image);
+                  setSelectedOrientation("horizontal");
                   setActionMsg(null);
                   setConfirmPublish(false);
                 }}
@@ -295,15 +369,49 @@ export default function PersonalGalleryPage() {
       )}
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-3 sm:items-center sm:p-4" onClick={() => setSelected(null)}>
-          <div className="my-auto w-full max-w-5xl rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-4" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-3 sm:items-center sm:p-4"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            className="my-auto max-h-[calc(100vh-2rem)] w-full max-w-6xl overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">{t("detail")}</h2>
-              <button type="button" onClick={() => setSelected(null)} className="rounded-md border border-[var(--color-border-strong)] px-3 py-1 text-sm">{t("close")}</button>
+              <button
+                type="button"
+                onClick={() => setSelected(null)}
+                className="rounded-md border border-[var(--color-border-strong)] px-3 py-1 text-sm"
+              >
+                {t("close")}
+              </button>
             </div>
-            <div className="mt-4 grid gap-4 lg:grid-cols-[2fr_1fr]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={selected.imageUrl} alt={t("selectedAlt")} className="w-full rounded-md border border-[var(--color-border)]" />
+            <div className={`mt-4 grid gap-4 ${
+              selectedOrientation === "vertical"
+                ? "lg:grid-cols-[minmax(0,auto)_minmax(280px,1fr)]"
+                : "lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]"
+            }`}>
+              <div className="space-y-3">
+                <div className="flex justify-center rounded-md border border-[var(--color-border)] bg-black/5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={selected.imageUrl}
+                    alt={t("selectedAlt")}
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      setSelectedOrientation(img.naturalHeight > img.naturalWidth ? "vertical" : "horizontal");
+                    }}
+                    className={
+                      selectedOrientation === "vertical"
+                        ? "max-h-[70vh] w-auto max-w-full object-contain"
+                        : "max-h-[62vh] w-full object-contain"
+                    }
+                  />
+                </div>
+                {selectedOrientation === "horizontal" && renderSelectedActions(selected)}
+              </div>
+
               <div className="space-y-3 text-sm">
                 <div>
                   <p className="mb-1"><strong>{t("yourDescription")}</strong></p>
@@ -315,65 +423,7 @@ export default function PersonalGalleryPage() {
                     <p className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2 text-[var(--color-text-secondary)]">{selected.stylePrompt}</p>
                   </div>
                 )}
-                <p className="text-[var(--color-text-muted)]">
-                  <strong className="text-[var(--color-text-primary)]">{t("visibility")}</strong>{" "}
-                  {selected.isPublic ? (
-                    <>
-                      {t("public")} ·{" "}
-                      <Link href={`/gallery/${selected.id}`} className="text-[var(--color-accent)] hover:underline">
-                        {t("viewInGallery")}
-                      </Link>
-                    </>
-                  ) : (
-                    t("private")
-                  )}
-                </p>
-
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <button
-                    type="button"
-                    disabled={actionBusy}
-                    onClick={() => void downloadImage(selected)}
-                    className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 font-semibold text-white hover:bg-[var(--color-accent-strong)] disabled:opacity-50"
-                  >
-                    {t("download")}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={actionBusy}
-                    onClick={() => {
-                      if (selected.isPublic) {
-                        void togglePublish(selected);
-                      } else {
-                        setConfirmPublish(true);
-                      }
-                    }}
-                    className="rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 hover:border-[var(--color-accent)] disabled:opacity-50"
-                  >
-                    {selected.isPublic ? t("makePrivate") : t("publish")}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={actionBusy}
-                    onClick={() => void removeItem(selected)}
-                    className="rounded-md border border-[var(--color-danger)]/50 px-3 py-1.5 text-[var(--color-danger)] hover:border-[var(--color-danger)] disabled:opacity-50"
-                  >
-                    {t("delete")}
-                  </button>
-                </div>
-
-                {confirmPublish && !selected.isPublic && (
-                  <PublishConfirmModal
-                    busy={actionBusy}
-                    onCancel={() => setConfirmPublish(false)}
-                    onConfirm={() => void togglePublish(selected)}
-                  />
-                )}
-                {!selected.isPublic && !confirmPublish && (
-                  <p className="text-[11px] text-[var(--color-text-muted)]">{t("publishRequiresPro")}</p>
-                )}
-                {actionMsg && <p className="text-xs text-[var(--color-text-secondary)]">{actionMsg}</p>}
-                <a href={selected.imageUrl} target="_blank" rel="noreferrer" className="inline-block text-[var(--color-accent)] hover:underline">{t("openOriginal")}</a>
+                {selectedOrientation === "vertical" && renderSelectedActions(selected)}
               </div>
             </div>
           </div>

@@ -11,6 +11,7 @@
 import type { Firestore } from "firebase-admin/firestore";
 import { FieldValue } from "firebase-admin/firestore";
 import { GENERATIONS_COLLECTION } from "./schema";
+import type { AspectRatio } from "@/lib/nanoBanana";
 
 export type StyleType = "preset" | "custom" | "gallery";
 export type GenerationProvider = "gemini" | "fal";
@@ -28,6 +29,7 @@ export interface Generation {
   styleId: string | null; // ID del preset o generationId de galería si usa estilo ajeno
   stylePrompt: string; // texto del estilo visual usado
   imageUrl: string;
+  aspectRatio?: AspectRatio | null;
   provider: GenerationProvider;
   resolution: GenerationResolution;
   mode: GenerationMode;
@@ -41,8 +43,9 @@ export interface Generation {
 
 export type NewGenerationInput = Omit<
   Generation,
-  "isPublic" | "publishedAt" | "timesStyleCopied" | "createdAt"
+  "isPublic" | "publishedAt" | "timesStyleCopied" | "createdAt" | "aspectRatio"
 > & {
+  aspectRatio?: AspectRatio | null;
   isPublic?: boolean;
   createdAt?: string;
 };
@@ -60,6 +63,7 @@ export function buildGeneration(input: NewGenerationInput): Generation {
     styleId: input.styleId ?? null,
     stylePrompt: input.stylePrompt,
     imageUrl: input.imageUrl,
+    aspectRatio: input.aspectRatio ?? null,
     provider: input.provider,
     resolution: input.resolution,
     mode: input.mode,

@@ -1,18 +1,10 @@
-// Detalle público de una miniatura (doc §6.3 + §6.4)
-// =============================================================================
-// Server Component con SSR: metadata para SEO (title/description/og), HTML
-// semántico (article/figure/figcaption) y datos estructurados JSON-LD.
-// =============================================================================
-
 import type { Metadata } from "next";
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
 import { getGenerationById, type GenerationWithId } from "@/lib/firestore/generations";
-import { generateAltText } from "@/lib/seo";
-import UseInGenerator from "./use-in-generator";
+import GenerationDetailContent from "./generation-detail-content";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +31,7 @@ async function loadAuthorName(userId: string): Promise<string> {
 
 function shortText(text: string, max: number): string {
   const clean = text.replace(/\s+/g, " ").trim();
-  return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`;
+  return clean.length <= max ? clean : `${clean.slice(0, max - 1)}...`;
 }
 
 export async function generateMetadata({
@@ -93,7 +85,6 @@ export default async function GenerationDetailPage({
   if (!gen) notFound();
 
   const authorName = await loadAuthorName(gen.userId);
-
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "ImageObject",
@@ -105,7 +96,7 @@ export default async function GenerationDetailPage({
   };
 
   return (
-    <main className="mx-auto max-w-[1000px] px-4 py-8 md:px-8 md:py-12">
+    <main className="mx-auto max-w-[1240px] px-4 py-8 md:px-8 md:py-12">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       <nav className="mb-6 text-sm text-[var(--color-text-secondary)]">
@@ -114,55 +105,7 @@ export default async function GenerationDetailPage({
         </Link>
       </nav>
 
-      <article className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-        <figure className="m-0 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-panel)]">
-          <div className="relative aspect-video w-full">
-            <Image
-              src={gen.imageUrl}
-              alt={generateAltText(gen)}
-              fill
-              sizes="(max-width: 1024px) 100vw, 640px"
-              priority
-              className="object-cover"
-            />
-          </div>
-          <div className="border-t border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-3">
-            <UseInGenerator generationId={gen.id} content={gen.userPrompt} style={gen.stylePrompt || null} />
-            <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--color-text-muted)]">
-              {gen.nicho && <span>{t("niche", { nicho: gen.nicho })}</span>}
-              <span>{t("styleUsedTimes", { count: gen.timesStyleCopied })}</span>
-            </div>
-          </div>
-        </figure>
-
-        <aside className="space-y-4 text-sm">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">{shortText(gen.userPrompt, 80)}</h1>
-            <p className="mt-1 text-[var(--color-text-muted)]">{t("byAuthor", { author: authorName })}</p>
-          </div>
-
-          {/* Contenido (qué aparece en la miniatura) */}
-          {gen.userPrompt && (
-            <div>
-              <p className="mb-1 font-medium text-[var(--color-text-primary)]">{t("content")}</p>
-              <p className="whitespace-pre-wrap rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2 text-[var(--color-text-secondary)]">
-                {gen.userPrompt}
-              </p>
-            </div>
-          )}
-
-          {/* Estilo (el look) */}
-          {gen.stylePrompt && (
-            <div>
-              <p className="mb-1 font-medium text-[var(--color-text-primary)]">{t("style")}</p>
-              <p className="whitespace-pre-wrap rounded-md border border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-2 text-[var(--color-text-secondary)]">
-                {gen.stylePrompt}
-              </p>
-            </div>
-          )}
-
-        </aside>
-      </article>
+      <GenerationDetailContent generation={gen} authorName={authorName} />
     </main>
   );
 }
