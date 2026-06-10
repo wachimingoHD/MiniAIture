@@ -486,7 +486,19 @@ export default function HomePage() {
       });
       const text = await res.text();
       if (!res.ok) {
-        setGenerationError(t("generationFailed", { detail: text || res.statusText }));
+        // Errores estructurados del backend → mensaje limpio; resto → genérico.
+        let detail = text || res.statusText;
+        try {
+          const parsed = JSON.parse(text) as { error?: string; reason?: string };
+          if (parsed.reason === "free_daily_limit") {
+            setGenerationError(t("dailyLimitReached"));
+            return;
+          }
+          if (parsed.error) detail = parsed.error;
+        } catch {
+          // no era JSON: usar el texto tal cual
+        }
+        setGenerationError(t("generationFailed", { detail }));
         return;
       }
       const data = JSON.parse(text) as GenerateResponse;

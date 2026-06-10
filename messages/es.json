@@ -239,6 +239,7 @@
     "promptRequired": "El contenido es obligatorio.",
     "signInToGenerate": "Hay que iniciar sesión antes de generar.",
     "generationFailed": "La generación falló: {detail}",
+    "dailyLimitReached": "Has alcanzado el límite de generaciones gratuitas de hoy. Vuelve mañana o pásate a PRO para generar sin esperas.",
     "titleFieldTitle": "Título del vídeo",
     "titleFieldSubtitle": "opcional — pero ayuda mucho a crear el gancho",
     "titleFieldPlaceholder": "¿Cuál es el título de tu vídeo? (la IA lo usa para el gancho)",

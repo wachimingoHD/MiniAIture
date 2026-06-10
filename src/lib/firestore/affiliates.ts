@@ -29,6 +29,13 @@ export interface Affiliate {
   userId?: string; // uid del creador si además es usuario de la app
   stripeConnectId?: string; // reservado para payouts automáticos futuros
   createdAt: string; // ISO string
+  // ---- Contadores visibles en Firebase (mantenidos por los webhooks) ----
+  /** Mensualidades pagadas totales atribuidas (mismo usuario 2 meses = 2). */
+  totalPaidMonths?: number;
+  /** Suscriptores con suscripción abierta AHORA atribuidos a este código. */
+  activeReferrals?: number;
+  /** Comisión total acumulada en céntimos (pagada o no). */
+  totalEarnedMinor?: number;
 }
 
 export function buildAffiliate(args: {
@@ -84,6 +91,7 @@ export async function recordAffiliateCommission(db: Firestore, args: {
   if (!affiliate.exists) return; // código borrado: no hay a quién liquidar
   const pct = (affiliate.data() as Affiliate).commissionPct ?? DEFAULT_AFFILIATE_COMMISSION_PCT;
 
+  const commissionMinor = Math.round((args.amountPaidMinor * pct) / 100);
   try {
     await db
       .collection(AFFILIATE_COMMISSIONS_COLLECTION)
@@ -93,15 +101,38 @@ export async function recordAffiliateCommission(db: Firestore, args: {
         uid: args.uid,
         invoiceId: args.invoiceId,
         amountPaidMinor: args.amountPaidMinor,
-        commissionMinor: Math.round((args.amountPaidMinor * pct) / 100),
+        commissionMinor,
         commissionPct: pct,
         currency: args.currency,
         paidOut: false, // marcar true al liquidar al creador
         createdAt: FieldValue.serverTimestamp(),
       });
   } catch {
-    // Ya registrada (reintento de webhook): nada que hacer.
+    // Ya registrada (reintento de webhook): no duplicar ni re-contar.
+    return;
   }
+
+  // Contadores agregados del creador (solo cuando el asiento es nuevo).
+  await affiliate.ref.set(
+    {
+      totalPaidMonths: FieldValue.increment(1),
+      totalEarnedMinor: FieldValue.increment(commissionMinor),
+    },
+    { merge: true },
+  );
+}
+
+// Ajusta el contador de referidos ACTIVOS del creador (+1 al atribuirse una
+// suscripción nueva, -1 cuando esa suscripción muere del todo).
+export async function adjustActiveReferrals(
+  db: Firestore,
+  code: string,
+  delta: 1 | -1,
+): Promise<void> {
+  const ref = db.collection(AFFILIATES_COLLECTION).doc(code);
+  const snap = await ref.get();
+  if (!snap.exists) return; // código borrado: nada que contar
+  await ref.set({ activeReferrals: FieldValue.increment(delta) }, { merge: true });
 }
 
 export { AFFILIATES_COLLECTION, AFFILIATE_COMMISSIONS_COLLECTION };

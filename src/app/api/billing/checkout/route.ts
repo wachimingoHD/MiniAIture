@@ -54,7 +54,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // webhook simply overwrote the first), leaving the user double-charged.
   // "Open" = anything not definitively over (active, trialing, past_due,
   // incomplete...), so a past_due user can't stack a second subscription.
-  if (userDoc.plan === "pro" && userDoc.subscriptionStatus !== "canceled") {
+  // Un PRO de cortesía (sin stripeSubscriptionId, regalado por script) SÍ
+  // puede comprar: pasaría a ser un PRO de pago normal.
+  if (
+    userDoc.plan === "pro" &&
+    userDoc.subscriptionStatus !== "canceled" &&
+    userDoc.stripeSubscriptionId
+  ) {
     return NextResponse.json(
       { error: "You already have an active Pro subscription." },
       { status: 409 },

@@ -104,6 +104,9 @@ export const GENERATIONS_COLLECTION = "generations";
 export const CREDIT_TRANSACTIONS_COLLECTION = "creditTransactions";
 export const AFFILIATES_COLLECTION = "affiliates";
 export const AFFILIATE_COMMISSIONS_COLLECTION = "affiliateCommissions";
+// PRO regalado a un email que aún no se ha registrado (doc id = email en
+// minúsculas). Se aplica y borra en el primer inicio de sesión.
+export const PENDING_GRANTS_COLLECTION = "pendingGrants";
 export const RATE_LIMITS_COLLECTION = "rateLimits";
 
 export const MAX_PRO_GALLERY_ENTRIES = 200;

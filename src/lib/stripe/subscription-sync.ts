@@ -6,6 +6,7 @@ import {
   retrieveCheckoutSessionWithSubscription,
   retrieveSubscription,
 } from "@/lib/stripe/client";
+import { adjustActiveReferrals } from "@/lib/firestore/affiliates";
 
 interface SubscriptionPeriodView {
   current_period_start?: number;
@@ -161,6 +162,10 @@ export async function applyStripeSubscriptionToUser(
     typeof sub.metadata?.affiliateCode === "string" && sub.metadata.affiliateCode.trim()
       ? sub.metadata.affiliateCode.trim().toUpperCase()
       : null;
+  // Primera vez que este usuario queda atribuido a este código → cuenta como
+  // nuevo referido activo del creador.
+  const isNewAttribution =
+    !!affiliateCode && grantsProAccess && existing?.affiliate?.referredBy !== affiliateCode;
   if (affiliateCode) {
     base.affiliate = {
       ...(existing?.affiliate ?? { discountActive: false }),
@@ -184,6 +189,10 @@ export async function applyStripeSubscriptionToUser(
         },
     { merge: true },
   );
+
+  if (isNewAttribution && affiliateCode) {
+    await adjustActiveReferrals(db, affiliateCode, 1);
+  }
 
   return { ok: true, uid: ref.id, subscriptionId: sub.id };
 }

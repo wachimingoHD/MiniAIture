@@ -203,8 +203,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const clientIp = getClientIp(req, cfg.security.trustedProxyHeader);
       const rate = await checkAndConsumeFreeIpRateLimit(db, { ip: clientIp });
       if (!rate.ok) {
+        // `reason` permite al frontend mostrar un mensaje limpio (sin mencionar
+        // la IP) en vez del JSON crudo.
         return NextResponse.json(
-          { error: "Free plan rate limit reached for this IP today." },
+          { error: "Daily free generation limit reached.", reason: "free_daily_limit" },
           { status: 429 },
         );
       }

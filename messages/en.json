@@ -239,6 +239,7 @@
     "promptRequired": "Content is required.",
     "signInToGenerate": "Sign in is required before generating.",
     "generationFailed": "Generation failed: {detail}",
+    "dailyLimitReached": "You've reached today's free generation limit. Come back tomorrow or go PRO to keep generating.",
     "titleFieldTitle": "Video title",
     "titleFieldSubtitle": "optional — but it helps a lot to create the hook",
     "titleFieldPlaceholder": "What's your video title? (the AI uses it for the hook)",

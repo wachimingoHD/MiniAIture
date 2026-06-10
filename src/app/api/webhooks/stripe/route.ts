@@ -4,7 +4,7 @@ import { verifyWebhookSignature } from "@/lib/stripe/client";
 import { adminFirestore } from "@/lib/auth/firebase-admin";
 import { getRuntimeConfig } from "@/lib/config/runtime";
 import { emptyUserStats, type UserDocument } from "@/lib/firestore/schema";
-import { recordAffiliateCommission } from "@/lib/firestore/affiliates";
+import { adjustActiveReferrals, recordAffiliateCommission } from "@/lib/firestore/affiliates";
 import type { DocumentReference, Firestore } from "firebase-admin/firestore";
 import { FieldValue } from "firebase-admin/firestore";
 import { safeErrorMessage } from "@/lib/server/errors";
@@ -88,6 +88,12 @@ async function onSubscriptionDeleted(db: Firestore, sub: Stripe.Subscription): P
     return;
   }
 
+  // El usuario deja de ser un referido ACTIVO de su creador (si lo tenía).
+  const snap = await ref.get();
+  const referredBy = snap.exists
+    ? ((snap.data() as UserDocument).affiliate?.referredBy?.trim().toUpperCase() ?? null)
+    : null;
+
   await ref.set(
     {
       plan: "free",
@@ -100,6 +106,8 @@ async function onSubscriptionDeleted(db: Firestore, sub: Stripe.Subscription): P
     } satisfies Partial<UserDocument>,
     { merge: true },
   );
+
+  if (referredBy) await adjustActiveReferrals(db, referredBy, -1);
 }
 
 async function onInvoicePaid(db: Firestore, invoice: Stripe.Invoice): Promise<void> {

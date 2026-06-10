@@ -4,6 +4,7 @@ import type { Provider } from "@/lib/nanoBanana";
 import { getRuntimeConfig } from "@/lib/config/runtime";
 import {
   MAX_PRO_GALLERY_ENTRIES,
+  PENDING_GRANTS_COLLECTION,
   RATE_LIMITS_COLLECTION,
   USERS_COLLECTION,
   type UserDocument,
@@ -37,9 +38,31 @@ export async function getOrCreateUserDocument(db: Firestore, args: {
   // Wrap the read+write in a transaction so two concurrent first-login requests
   // can't both observe an empty doc and race to overwrite each other's seed.
   return db.runTransaction(async (tx) => {
+    const email = normalizeEmail(args.email);
     const snapshot = await tx.get(ref);
+
     if (snapshot.exists) {
       const existing = snapshot.data() as UserDocument;
+
+      // PRO de cortesía caducado: un PRO SIN suscripción de Stripe (regalado
+      // por script) expira cuando pasa su subscriptionEnd. Sin esto, regalar
+      // PRO sería permanente. Los PRO de pago no entran aquí (tienen
+      // stripeSubscriptionId y los gestiona el ciclo de webhooks).
+      const compExpired =
+        existing.plan === "pro" &&
+        !existing.stripeSubscriptionId &&
+        !!existing.subscriptionEnd &&
+        Date.parse(existing.subscriptionEnd) < Date.now();
+      if (compExpired) {
+        const downgrade: Partial<UserDocument> = {
+          plan: "free",
+          subscriptionStatus: "canceled",
+          credits: { ...existing.credits, monthly: 0 },
+        };
+        tx.set(ref, downgrade, { merge: true });
+        return { ...existing, ...downgrade } as UserDocument;
+      }
+
       // Backfill: si el doc no tenía displayName y ahora llega el de Google, lo
       // guardamos (la galería pública lo usa como autor).
       const incoming = args.displayName?.trim();
@@ -50,14 +73,30 @@ export async function getOrCreateUserDocument(db: Firestore, args: {
       return existing;
     }
 
+    // Primer inicio de sesión: ¿hay un PRO regalado pendiente para este email?
+    const grantRef = db.collection(PENDING_GRANTS_COLLECTION).doc(email);
+    const grantSnap = await tx.get(grantRef);
+    const grantMonths = grantSnap.exists
+      ? Math.max(1, Math.floor(Number((grantSnap.data() as { months?: unknown }).months) || 1))
+      : 0;
+
     const initial = buildInitialUserDocument({
-      email: normalizeEmail(args.email),
+      email,
       displayName: args.displayName?.trim() || undefined,
-      plan: "free",
+      plan: grantMonths > 0 ? "pro" : "free",
       freeDailyCredits: credits.freeDaily,
       proDailyCredits: credits.proDaily,
       proMonthlyCredits: credits.proMonthly,
     });
+    if (grantMonths > 0) {
+      const now = Date.now();
+      initial.subscriptionStatus = "active";
+      initial.subscriptionStart = new Date(now).toISOString();
+      // Sin stripeSubscriptionId: el bloque compExpired de arriba lo degradará
+      // a FREE automáticamente cuando pase esta fecha.
+      initial.subscriptionEnd = new Date(now + grantMonths * 30 * 24 * 60 * 60 * 1000).toISOString();
+      tx.delete(grantRef);
+    }
     tx.set(ref, initial);
     return initial;
   });
