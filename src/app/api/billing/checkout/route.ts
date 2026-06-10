@@ -11,6 +11,15 @@ import { getActiveAffiliate, normalizeAffiliateCode } from "@/lib/firestore/affi
 import { applyStripeSubscriptionToUser } from "@/lib/stripe/subscription-sync";
 import { safeErrorMessage } from "@/lib/server/errors";
 import { routing, type Locale } from "@/i18n/routing";
+import { FieldValue } from "firebase-admin/firestore";
+
+// Stripe responde "resource_missing" sobre `customer` cuando el id guardado
+// pertenece al otro modo (un cus_ de test usado con claves live, o viceversa).
+function isStaleCustomerError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: unknown; param?: unknown };
+  return e.code === "resource_missing" && e.param === "customer";
+}
 
 export const runtime = "nodejs";
 
@@ -141,18 +150,45 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
   }
 
+  const checkoutInput = {
+    uid: user.uid,
+    email: user.email,
+    affiliateCode,
+    promotionCodeId,
+    successUrl: pricingReturnUrl(req, locale, "success"),
+    cancelUrl: pricingReturnUrl(req, locale, "cancelled"),
+  };
+
   try {
     const url = await createProCheckoutSession({
-      uid: user.uid,
-      email: user.email,
+      ...checkoutInput,
       existingCustomerId: userDoc.stripeCustomerId,
-      affiliateCode,
-      promotionCodeId,
-      successUrl: pricingReturnUrl(req, locale, "success"),
-      cancelUrl: pricingReturnUrl(req, locale, "cancelled"),
     });
     return NextResponse.json({ url });
   } catch (err) {
+    // Migración test→live: los usuarios registrados durante la fase de test
+    // conservan un stripeCustomerId de TEST que no existe en live. Limpiamos
+    // el id obsoleto y reintentamos dejando que Stripe cree el customer real.
+    if (userDoc.stripeCustomerId && isStaleCustomerError(err)) {
+      console.warn(
+        `Stale Stripe customer ${userDoc.stripeCustomerId} for uid ${user.uid}; clearing and retrying checkout.`,
+      );
+      await db
+        .collection("users")
+        .doc(user.uid)
+        .set({ stripeCustomerId: FieldValue.delete() }, { merge: true });
+      try {
+        const url = await createProCheckoutSession(checkoutInput);
+        return NextResponse.json({ url });
+      } catch (retryErr) {
+        console.error("Checkout retry after stale customer failed", retryErr);
+        return NextResponse.json(
+          { error: safeErrorMessage(retryErr, "checkout_failed") },
+          { status: 500 },
+        );
+      }
+    }
+    console.error("Checkout session creation failed", err);
     return NextResponse.json(
       { error: safeErrorMessage(err, "checkout_failed") },
       { status: 500 },
