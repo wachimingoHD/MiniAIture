@@ -21,6 +21,19 @@ function isStaleCustomerError(err: unknown): boolean {
   return e.code === "resource_missing" && e.param === "customer";
 }
 
+// Mismo caso para promotion codes: el doc de `affiliates` guarda un promo_ de
+// test que no existe en live. Stripe lo reporta como resource_missing sobre
+// el parámetro discounts[0][promotion_code].
+function isStalePromotionCodeError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: unknown; param?: unknown };
+  return (
+    e.code === "resource_missing" &&
+    typeof e.param === "string" &&
+    e.param.includes("promotion_code")
+  );
+}
+
 export const runtime = "nodejs";
 
 function localeFromBody(body: unknown): Locale {
@@ -154,44 +167,68 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     uid: user.uid,
     email: user.email,
     affiliateCode,
-    promotionCodeId,
     successUrl: pricingReturnUrl(req, locale, "success"),
     cancelUrl: pricingReturnUrl(req, locale, "cancelled"),
   };
 
-  try {
-    const url = await createProCheckoutSession({
-      ...checkoutInput,
-      existingCustomerId: userDoc.stripeCustomerId,
-    });
-    return NextResponse.json({ url });
-  } catch (err) {
-    // Migración test→live: los usuarios registrados durante la fase de test
-    // conservan un stripeCustomerId de TEST que no existe en live. Limpiamos
-    // el id obsoleto y reintentamos dejando que Stripe cree el customer real.
-    if (userDoc.stripeCustomerId && isStaleCustomerError(err)) {
-      console.warn(
-        `Stale Stripe customer ${userDoc.stripeCustomerId} for uid ${user.uid}; clearing and retrying checkout.`,
-      );
-      await db
-        .collection("users")
-        .doc(user.uid)
-        .set({ stripeCustomerId: FieldValue.delete() }, { merge: true });
-      try {
-        const url = await createProCheckoutSession(checkoutInput);
-        return NextResponse.json({ url });
-      } catch (retryErr) {
-        console.error("Checkout retry after stale customer failed", retryErr);
-        return NextResponse.json(
-          { error: safeErrorMessage(retryErr, "checkout_failed") },
-          { status: 500 },
+  // Migración test→live: Firestore puede conservar ids de TEST (un customer en
+  // users/{uid} o un promotion code en affiliates/{code}) que no existen en
+  // live. En vez de fallar con un checkout_failed mudo, curamos el id obsoleto
+  // que señale Stripe y reintentamos (máx. 3 intentos: ambos pueden estar
+  // obsoletos a la vez para un usuario de la fase de test).
+  let existingCustomerId = userDoc.stripeCustomerId;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const url = await createProCheckoutSession({
+        ...checkoutInput,
+        existingCustomerId,
+        promotionCodeId,
+      });
+      return NextResponse.json({ url });
+    } catch (err) {
+      if (attempt < 3 && existingCustomerId && isStaleCustomerError(err)) {
+        console.warn(
+          `Stale Stripe customer ${existingCustomerId} for uid ${user.uid}; clearing and retrying checkout.`,
         );
+        await db
+          .collection("users")
+          .doc(user.uid)
+          .set({ stripeCustomerId: FieldValue.delete() }, { merge: true });
+        existingCustomerId = undefined;
+        continue;
       }
+
+      if (attempt < 3 && affiliateCode && promotionCodeId && isStalePromotionCodeError(err)) {
+        console.warn(
+          `Stale promotion code ${promotionCodeId} for affiliate ${affiliateCode}; resolving by code text.`,
+        );
+        let resolved: string | undefined;
+        try {
+          resolved = (await findActivePromotionCodeByCode(affiliateCode)) ?? undefined;
+        } catch {
+          resolved = undefined;
+        }
+        if (!resolved || resolved === promotionCodeId) {
+          // El código no existe activo en este modo de Stripe: mejor avisar
+          // que cobrar el precio completo en silencio.
+          return NextResponse.json(
+            { error: "invalid_affiliate_code", reason: "invalid_affiliate_code" },
+            { status: 400 },
+          );
+        }
+        await db
+          .collection("affiliates")
+          .doc(affiliateCode)
+          .set({ stripePromotionCodeId: resolved }, { merge: true });
+        promotionCodeId = resolved;
+        continue;
+      }
+
+      console.error("Checkout session creation failed", err);
+      return NextResponse.json(
+        { error: safeErrorMessage(err, "checkout_failed") },
+        { status: 500 },
+      );
     }
-    console.error("Checkout session creation failed", err);
-    return NextResponse.json(
-      { error: safeErrorMessage(err, "checkout_failed") },
-      { status: 500 },
-    );
   }
 }

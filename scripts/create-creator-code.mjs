@@ -52,7 +52,9 @@ const env = Object.fromEntries(
     }),
 );
 
-const stripe = new Stripe(env.STRIPE_SECRET_KEY);
+// Para apuntar a LIVE sin tocar .env.local:
+//   $env:STRIPE_SECRET_KEY="sk_live_..."; node scripts/create-creator-code.mjs ...
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || env.STRIPE_SECRET_KEY);
 initializeApp({ credential: cert(JSON.parse(env.FIREBASE_ADMIN_CREDENTIALS)) });
 const db = getFirestore();
 
