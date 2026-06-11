@@ -1,50 +1,24 @@
-// Borrado de cuenta (derecho de supresión RGPD).
-// POST /api/user/delete — autenticado; borra TODO lo del usuario:
-//   1. Cancela la suscripción Stripe inmediatamente (si la hay): no puede
-//      quedar una suscripción facturando a una cuenta que ya no existe.
-//   2. Borra sus imágenes de Storage (todo el prefijo users/{uid}/).
-//   3. Borra sus documentos: generations, creditTransactions y users/{uid}.
-//   4. Borra el usuario de Firebase Auth.
-// El customer de Stripe NO se borra (las facturas deben conservarse por
-// obligación fiscal), pero queda sin suscripción.
+// Solicitud de borrado de cuenta (derecho de supresión RGPD) — DIFERIDA.
+// POST /api/user/delete — autenticado. NO borra al instante: marca
+// `deletionScheduledAt` (~24h) y cierra la sesión en el cliente. El cron
+// diario /api/cron/process-account-deletions ejecuta los vencidos (Storage,
+// Firestore, Stripe y Auth — ver src/lib/account-deletion.ts).
+//
+// ¿Por qué diferido? Anti-abuso: borrar y recrear la cuenta al momento
+// regalaba 100 créditos FREE frescos infinitas veces. Con ~24h de espera, el
+// truco no aporta nada sobre el reset diario normal. Si el usuario inicia
+// sesión durante la espera, la solicitud se cancela (getOrCreateUserDocument);
+// al volver recupera su cuenta tal cual estaba, sin créditos nuevos.
 // =============================================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { getStorage } from "firebase-admin/storage";
-import type { Firestore, Query } from "firebase-admin/firestore";
-import {
-  adminFirestore,
-  deleteAuthUser,
-  getAdminApp,
-  verifyIdToken,
-} from "@/lib/auth/firebase-admin";
+import { adminFirestore, verifyIdToken } from "@/lib/auth/firebase-admin";
 import { readBearerToken } from "@/lib/server/request";
-import { cancelSubscriptionImmediately } from "@/lib/stripe/client";
-import { getFirebaseStorageConfig } from "@/lib/storage/firebase-storage";
-import {
-  CREDIT_TRANSACTIONS_COLLECTION,
-  GENERATIONS_COLLECTION,
-  USERS_COLLECTION,
-  type UserDocument,
-} from "@/lib/firestore/schema";
-import { safeErrorMessage } from "@/lib/server/errors";
+import { USERS_COLLECTION } from "@/lib/firestore/schema";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
 
-// Borra en lotes todos los docs que devuelva la query (máx. 500 por batch).
-async function deleteByQuery(db: Firestore, query: Query): Promise<number> {
-  let total = 0;
-  for (;;) {
-    const snap = await query.limit(400).get();
-    if (snap.empty) return total;
-    const batch = db.batch();
-    snap.docs.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-    total += snap.size;
-    if (snap.size < 400) return total;
-  }
-}
+const DELETION_DELAY_MS = 24 * 60 * 60 * 1000; // ~24h
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const token = readBearerToken(req);
@@ -54,55 +28,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!user) return NextResponse.json({ error: "Invalid or expired auth token." }, { status: 401 });
 
   const db = adminFirestore();
-  const app = getAdminApp();
-  if (!db || !app) {
+  if (!db) {
     return NextResponse.json({ error: "Firebase Admin not configured." }, { status: 500 });
   }
 
-  const uid = user.uid;
-  const userRef = db.collection(USERS_COLLECTION).doc(uid);
-  const snap = await userRef.get();
-  const userDoc = snap.exists ? (snap.data() as UserDocument) : null;
+  const scheduledAt = new Date(Date.now() + DELETION_DELAY_MS).toISOString();
+  const userRef = db.collection(USERS_COLLECTION).doc(user.uid);
 
-  // 1) Suscripción: cancelar YA en Stripe. Si Stripe falla (caído, clave mal),
-  // abortamos: mejor que el usuario reintente a dejar una suscripción huérfana.
-  // NO ajustamos aquí el contador de referidos: la cancelación dispara el
-  // webhook subscription.deleted, que lo decrementa una sola vez a partir de la
-  // metadata de la suscripción. Hacerlo también aquí causaba doble decremento.
-  if (userDoc?.stripeSubscriptionId && userDoc.subscriptionStatus !== "canceled") {
-    try {
-      await cancelSubscriptionImmediately(userDoc.stripeSubscriptionId);
-    } catch (err) {
-      return NextResponse.json(
-        {
-          error: "No se pudo cancelar la suscripción. Inténtalo de nuevo en unos minutos.",
-          detail: safeErrorMessage(err, "stripe_cancel_failed"),
-        },
-        { status: 502 },
-      );
-    }
+  try {
+    // update() y no set(merge): si el doc no existe (cuenta nunca usada de
+    // verdad), no hay nada que programar.
+    await userRef.update({ deletionScheduledAt: scheduledAt });
+  } catch {
+    return NextResponse.json({ ok: true, scheduledAt, note: "no_user_doc" });
   }
 
-  // 2) Imágenes de Storage (todas las del usuario cuelgan de users/{uid}/).
-  const storageCfg = getFirebaseStorageConfig();
-  if (storageCfg) {
-    try {
-      await getStorage(app)
-        .bucket(storageCfg.bucketName)
-        .deleteFiles({ prefix: `users/${uid}/`, force: true });
-    } catch (err) {
-      console.warn("Borrado de Storage incompleto para", uid, safeErrorMessage(err, "storage"));
-    }
-  }
-
-  // 3) Documentos de Firestore.
-  await deleteByQuery(db, db.collection(GENERATIONS_COLLECTION).where("userId", "==", uid));
-  await deleteByQuery(db, db.collection(CREDIT_TRANSACTIONS_COLLECTION).where("userId", "==", uid));
-  await userRef.delete();
-
-  // 4) Usuario de Firebase Auth (al final: si algo de arriba falla, el usuario
-  // aún puede reintentar logueado).
-  const authDeleted = await deleteAuthUser(uid);
-
-  return NextResponse.json({ ok: true, authDeleted });
+  return NextResponse.json({ ok: true, scheduledAt });
 }

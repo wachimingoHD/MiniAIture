@@ -92,6 +92,13 @@ export interface UserDocument {
   credits: UserCredits;
   affiliate?: UserAffiliate;
   stats: UserStats;
+  /**
+   * Borrado de cuenta DIFERIDO (anti-abuso): al solicitarlo se fija esta fecha
+   * (~24h en el futuro) en vez de borrar al instante; un cron diario ejecuta
+   * los vencidos. Iniciar sesión de nuevo cancela la solicitud. Sin esto,
+   * borrar+recrear la cuenta regalaba créditos diarios infinitos.
+   */
+  deletionScheduledAt?: string;
   /** @deprecated movido a la colección `generations`. Sólo lectura en migración. */
   gallery?: ImageEntry[];
 }

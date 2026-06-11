@@ -172,12 +172,13 @@
     "supportMailSubject": "MiniAItura support",
     "contactSupport": "Contact support",
     "dangerZone": "Danger zone",
-    "deleteAccountText": "Deleting your account permanently removes your thumbnails, credits and all your data. If you have an active PRO subscription, it is cancelled immediately (no refund for the current period).",
+    "deleteAccountText": "When you request deletion, your account goes on hold and is permanently removed within about 24-48 hours: thumbnails, credits and all your data. If you have a PRO subscription, it is cancelled when the deletion runs. If you sign in before then, the request is cancelled and you keep your account.",
     "deleteAccount": "Delete my account",
     "deleting": "Deleting…",
-    "deleteConfirm1": "Are you sure you want to delete your account? All your thumbnails and data will be removed. This cannot be undone.",
-    "deleteConfirm2": "Final confirmation: your account and your subscription (if any) will be permanently deleted. Continue?",
-    "deleteFailed": "Account could not be deleted. Please try again."
+    "deleteConfirm1": "Are you sure you want to delete your account? It will go on hold and be permanently removed within about 24-48 hours, along with all your thumbnails and data.",
+    "deleteConfirm2": "Final confirmation: your account (and your subscription, if any) will be scheduled for permanent deletion. You can cancel by signing in again before it runs. Continue?",
+    "deleteFailed": "Account could not be deleted. Please try again.",
+    "deleteScheduled": "Deletion scheduled. Your account will be removed within about 24-48 hours; sign in again before then if you change your mind."
   },
   "galleryPersonal": {
     "headerSubtitle": "Your gallery",

@@ -106,7 +106,7 @@ const es: Record<LegalSlug, LegalDocument> = {
       {
         heading: "5. Cuánto tiempo",
         paragraphs: [
-          "Conservamos tus datos mientras tengas cuenta. Puedes borrar tu cuenta en cualquier momento desde Ajustes: se eliminan tus miniaturas, tus créditos y tus datos, y si tienes suscripción se cancela. Los datos de facturación se conservan el tiempo que exige la normativa fiscal.",
+          "Conservamos tus datos mientras tengas cuenta. Puedes solicitar el borrado de tu cuenta en cualquier momento desde Ajustes: el borrado se hace efectivo en un plazo aproximado de 24-48 horas, y elimina tus miniaturas, tus créditos y tus datos (si tienes suscripción, se cancela). Si inicias sesión de nuevo antes de que se ejecute, la solicitud se cancela. Los datos de facturación se conservan el tiempo que exige la normativa fiscal.",
         ],
       },
       {
@@ -281,7 +281,7 @@ const en: Record<LegalSlug, LegalDocument> = {
       {
         heading: "5. For how long",
         paragraphs: [
-          "We keep your data while your account exists. You can delete your account at any time from Settings: your thumbnails, credits and data are removed, and any subscription is cancelled. Billing records are kept for as long as tax law requires.",
+          "We keep your data while your account exists. You can request account deletion at any time from Settings: it takes effect within roughly 24-48 hours and removes your thumbnails, credits and data (any subscription is cancelled). Signing in again before it runs cancels the request. Billing records are kept for as long as tax law requires.",
         ],
       },
       {

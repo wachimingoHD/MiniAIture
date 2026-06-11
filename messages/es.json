@@ -172,12 +172,13 @@
     "supportMailSubject": "Soporte MiniAItura",
     "contactSupport": "Contactar con soporte",
     "dangerZone": "Zona de peligro",
-    "deleteAccountText": "Borrar tu cuenta elimina para siempre tus miniaturas, tus créditos y todos tus datos. Si tienes una suscripción PRO activa, se cancela en el momento (sin reembolso del periodo en curso).",
+    "deleteAccountText": "Al solicitar el borrado, tu cuenta queda en espera y se elimina definitivamente en unas 24-48 horas: miniaturas, créditos y todos tus datos. Si tienes suscripción PRO, se cancela al ejecutarse el borrado. Si inicias sesión antes, la solicitud se cancela y conservas tu cuenta.",
     "deleteAccount": "Borrar mi cuenta",
     "deleting": "Borrando…",
-    "deleteConfirm1": "¿Seguro que quieres borrar tu cuenta? Se eliminarán todas tus miniaturas y datos. Esta acción no se puede deshacer.",
-    "deleteConfirm2": "Última confirmación: tu cuenta y tu suscripción (si la tienes) se eliminarán definitivamente. ¿Continuar?",
-    "deleteFailed": "No se pudo borrar la cuenta. Inténtalo de nuevo."
+    "deleteConfirm1": "¿Seguro que quieres borrar tu cuenta? Quedará en espera y se eliminará definitivamente en unas 24-48 horas, con todas tus miniaturas y datos.",
+    "deleteConfirm2": "Última confirmación: se programará el borrado definitivo de tu cuenta (y de tu suscripción, si la tienes). Puedes cancelarlo iniciando sesión de nuevo antes de que se ejecute. ¿Continuar?",
+    "deleteFailed": "No se pudo borrar la cuenta. Inténtalo de nuevo.",
+    "deleteScheduled": "Borrado programado. Tu cuenta se eliminará en unas 24-48 horas; inicia sesión antes si cambias de opinión."
   },
   "galleryPersonal": {
     "headerSubtitle": "Tu galería",

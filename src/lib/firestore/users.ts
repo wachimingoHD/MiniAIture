@@ -44,6 +44,14 @@ export async function getOrCreateUserDocument(db: Firestore, args: {
     if (snapshot.exists) {
       const existing = snapshot.data() as UserDocument;
 
+      // Borrado programado pendiente: volver a iniciar sesión lo CANCELA (el
+      // usuario se arrepintió). Recupera su cuenta tal cual estaba — sin
+      // créditos nuevos, así que esto no reabre el abuso de borrar+recrear.
+      if (existing.deletionScheduledAt) {
+        tx.update(ref, { deletionScheduledAt: FieldValue.delete() });
+        delete existing.deletionScheduledAt;
+      }
+
       // PRO de cortesía caducado: un PRO SIN suscripción de Stripe (regalado
       // por script) expira cuando pasa su subscriptionEnd. Sin esto, regalar
       // PRO sería permanente. Los PRO de pago no entran aquí (tienen

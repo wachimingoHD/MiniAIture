@@ -172,8 +172,9 @@ export default function SettingsPage() {
         setMsg({ kind: "err", text: data.error ?? t("deleteFailed") });
         return;
       }
-      // La sesión local sigue viva aunque el usuario ya no exista: cerrarla y
-      // volver a la portada.
+      // Borrado DIFERIDO: la cuenta queda en espera ~24-48h. Cerramos sesión;
+      // si el usuario vuelve a entrar antes de que se ejecute, se cancela.
+      window.alert(t("deleteScheduled"));
       await signOutUser().catch(() => {});
       window.location.href = `/${locale}`;
     } catch (err) {
