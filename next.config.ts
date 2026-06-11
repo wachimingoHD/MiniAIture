@@ -15,6 +15,24 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "12mb",
     },
   },
+  // Proxy del handler de Firebase Auth para poder usar el dominio propio como
+  // authDomain: el popup de Google pasa de decir "Ir a miniaitures-f3818.
+  // firebaseapp.com" a "Ir a miniaitura.com". Inerte hasta que
+  // NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN apunte al dominio propio (ver README de
+  // pasos: dominio autorizado en Firebase Auth + redirect URI en el cliente
+  // OAuth de Google Cloud).
+  async rewrites() {
+    return [
+      {
+        source: "/__/auth/:path*",
+        destination: "https://miniaitures-f3818.firebaseapp.com/__/auth/:path*",
+      },
+      {
+        source: "/__/firebase/:path*",
+        destination: "https://miniaitures-f3818.firebaseapp.com/__/firebase/:path*",
+      },
+    ];
+  },
   async headers() {
     return [
       {
