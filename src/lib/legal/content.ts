@@ -83,7 +83,7 @@ const es: Record<LegalSlug, LegalDocument> = {
         heading: "2. Qué datos tratamos",
         list: [
           "Datos de cuenta: al iniciar sesión con Google recibimos tu nombre, correo electrónico y foto de perfil.",
-          "Contenido: los textos (prompts) que escribes, las imágenes de referencia que subes y las miniaturas que generas, asociados a tu cuenta.",
+          "Contenido: los textos (prompts) que escribes y las miniaturas que generas, asociados a tu cuenta. Las imágenes de referencia que subes no se almacenan: se usan únicamente durante la generación y se descartan.",
           "Pago: si contratas PRO, el pago lo procesa Stripe. Nunca vemos ni guardamos tu tarjeta; solo identificadores de cliente y suscripción de Stripe.",
           "Datos técnicos: tu dirección IP, usada únicamente para limitar el abuso del plan gratuito y proteger la plataforma.",
         ],
@@ -100,7 +100,7 @@ const es: Record<LegalSlug, LegalDocument> = {
         heading: "4. Con quién se comparten",
         paragraphs: [
           "Usamos proveedores que tratan datos por nuestra cuenta: Google Firebase (autenticación, base de datos y almacenamiento), Google Gemini y fal.ai (modelos de IA que generan las imágenes), Stripe (pagos) y Vercel (alojamiento y analítica agregada sin cookies). Algunos están en Estados Unidos y operan bajo las garantías europeas para transferencias internacionales de datos.",
-          "Tus prompts e imágenes de referencia se envían a los proveedores de IA únicamente para generar tu miniatura. No vendemos tus datos a nadie.",
+          "Tus prompts e imágenes de referencia se envían a los proveedores de IA únicamente para generar tu miniatura; las imágenes de referencia no se guardan en nuestros servidores. No vendemos tus datos a nadie.",
         ],
       },
       {
@@ -258,7 +258,7 @@ const en: Record<LegalSlug, LegalDocument> = {
         heading: "2. Data we process",
         list: [
           "Account data: when you sign in with Google we receive your name, email address and profile photo.",
-          "Content: the prompts you write, the reference images you upload and the thumbnails you generate, linked to your account.",
+          "Content: the prompts you write and the thumbnails you generate, linked to your account. The reference images you upload are not stored: they are used only during generation and then discarded.",
           "Payment: PRO subscriptions are processed by Stripe. We never see or store your card; we only keep Stripe customer and subscription identifiers.",
           "Technical data: your IP address, used solely to limit free-plan abuse and keep the platform secure.",
         ],
@@ -275,7 +275,7 @@ const en: Record<LegalSlug, LegalDocument> = {
         heading: "4. Who it is shared with",
         paragraphs: [
           "We rely on providers that process data on our behalf: Google Firebase (authentication, database, storage), Google Gemini and fal.ai (the AI models that generate the images), Stripe (payments) and Vercel (hosting and cookieless aggregated analytics). Some are located in the United States and operate under the European safeguards for international data transfers.",
-          "Your prompts and reference images are sent to the AI providers only to generate your thumbnail. We never sell your data.",
+          "Your prompts and reference images are sent to the AI providers only to generate your thumbnail; reference images are never stored on our servers. We never sell your data.",
         ],
       },
       {
