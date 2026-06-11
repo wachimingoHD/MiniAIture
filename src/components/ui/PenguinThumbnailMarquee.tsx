@@ -293,11 +293,18 @@ export function PenguinThumbnailMarquee({ items }: { items: MarqueeThumb[] }) {
     setSelected((cur) => (cur?.id === id ? null : cur));
   };
 
+  // Cada fila enseña una MITAD distinta de la muestra aleatoria (antes la fila
+  // de abajo era reverse() de la de arriba y, al desplazarse también en sentido
+  // contrario, se veía la misma secuencia exacta). Si solo hay una miniatura,
+  // ambas filas la repiten — no hay más material.
+  const mid = Math.ceil(base.length / 2);
+  const topHalf = base.slice(0, mid);
+  const bottomHalf = base.length > 1 ? base.slice(mid) : base;
+
   // 24 ítems por grupo: cada copia supera con holgura el ancho de pantalla
   // incluso con bastante zoom-out, evitando que se vea el corte al reciclar.
-  const group = fillTo(base, 24);
-  const top = group;
-  const bottom = [...group].reverse();
+  const top = fillTo(topHalf, 24);
+  const bottom = fillTo(bottomHalf, 24);
 
   return (
     <div className="flex flex-col gap-6">

@@ -127,6 +127,9 @@ export async function enhancePrompt(
     systemInstruction: thumbnailSystemPrompt(input.aspectRatio),
     contents,
     apiKey: opts.apiKey,
+    // Sin "thinking": el system prompt ya dirige la composición paso a paso y
+    // el modo pensar solo añadía segundos a cada generación.
+    disableThinking: true,
   });
 
   if (!response.ok) {
