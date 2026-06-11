@@ -71,8 +71,10 @@ export function PageHeader() {
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <div className="mx-auto max-w-[1480px] px-4 pt-6 md:px-8">
-      <header className="flex items-center justify-between gap-4 border-b border-[var(--color-border)] pb-5">
+    // Banner de ancho completo: fondo de panel propio que lo separa del beige
+    // de la página (antes era transparente con solo una línea inferior).
+    <div className="border-b border-[var(--color-border)] bg-[var(--color-bg-panel)] shadow-sm">
+      <header className="mx-auto flex max-w-[1480px] items-center justify-between gap-4 px-4 py-4 md:px-8">
         <Link href="/" className="shrink-0">
           <span className="font-display text-xl font-bold tracking-tight">
             Mini<span className="text-[var(--color-accent)]">AI</span>tura
