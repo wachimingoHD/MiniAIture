@@ -28,9 +28,9 @@ Este proyecto se publica bajo la **[PolyForm Noncommercial License 1.0.0](LICENS
 
 Required Notice: Copyright (c) 2026 MiniAItura (https://miniaitura.com)
 
-En resumen (el texto legal completo en [LICENSE.md](LICENSE.md) es el que manda):
+En resumen (mas información sobre la licencia en [LICENSE.md](LICENSE.md)):
 
-- ✅ Puedes leer, usar, modificar y compartir este código **para fines no comerciales** (estudio personal, investigación, hobby).
-- ❌ **No puedes** usar este código, ni versiones modificadas, con fines comerciales: desplegarlo como servicio o SaaS con pagos, suscripciones, publicidad, donaciones u otra monetización, sin permiso previo por escrito del titular del copyright.
+- Puedes leer, usar, modificar y compartir este código **para fines no comerciales** (estudio personal, investigación, hobby).
+- **No puedes** usar este código, ni versiones modificadas, con fines comerciales: desplegarlo como servicio o SaaS con pagos, suscripciones, publicidad, donaciones u otra monetización, sin permiso previo por escrito del titular del copyright.
 
 Para licencias comerciales, contacta con los autores.
