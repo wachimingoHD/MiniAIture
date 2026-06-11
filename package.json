@@ -13,6 +13,7 @@
     "migrate:gallery": "node --experimental-strip-types scripts/migrate-gallery-to-generations.ts"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "firebase": "^12.12.1",
     "firebase-admin": "^13.8.0",
     "next": "16.2.4",

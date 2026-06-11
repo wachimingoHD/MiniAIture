@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "title": "MiniAItura — Miniaturas de YouTube con IA",
-    "titleTemplate": "%s | MiniAItura",
+    "title": "MiniAItura | Miniaturas de YouTube con IA",
+    "titleTemplate": "MiniAItura | %s",
     "description": "Describe tu vídeo y nuestra IA genera la miniatura perfecta para tu nicho. Miniaturas de YouTube que consiguen clics, sin saber diseñar.",
     "ogDescription": "Describe tu vídeo y la IA genera la miniatura perfecta para tu nicho.",
     "twitterDescription": "Genera miniaturas profesionales de YouTube con IA en segundos.",
@@ -163,7 +163,18 @@
     "nameUpdated": "Nombre actualizado.",
     "cancelConfirm": "¿Cancelar tu suscripción PRO? Seguirás siendo PRO hasta el final del periodo ya pagado.",
     "cancelFailed": "No se pudo cancelar.",
-    "cancelSuccess": "Suscripción cancelada. Seguirás siendo PRO hasta el final del periodo."
+    "cancelSuccess": "Suscripción cancelada. Seguirás siendo PRO hasta el final del periodo.",
+    "support": "Soporte y privacidad",
+    "supportText": "¿Algún problema, duda o quieres ejercer tus derechos de protección de datos (acceso, supresión, portabilidad…)? Escríbenos y te respondemos lo antes posible.",
+    "supportMailSubject": "Soporte MiniAItura",
+    "contactSupport": "Contactar con soporte",
+    "dangerZone": "Zona de peligro",
+    "deleteAccountText": "Borrar tu cuenta elimina para siempre tus miniaturas, tus créditos y todos tus datos. Si tienes una suscripción PRO activa, se cancela en el momento (sin reembolso del periodo en curso).",
+    "deleteAccount": "Borrar mi cuenta",
+    "deleting": "Borrando…",
+    "deleteConfirm1": "¿Seguro que quieres borrar tu cuenta? Se eliminarán todas tus miniaturas y datos. Esta acción no se puede deshacer.",
+    "deleteConfirm2": "Última confirmación: tu cuenta y tu suscripción (si la tienes) se eliminarán definitivamente. ¿Continuar?",
+    "deleteFailed": "No se pudo borrar la cuenta. Inténtalo de nuevo."
   },
   "galleryPersonal": {
     "headerSubtitle": "Tu galería",
@@ -230,7 +241,11 @@
     "content": "Contenido",
     "style": "Estilo",
     "niche": "Nicho: {nicho}",
-    "styleUsedTimes": "{count, plural, one {Este estilo ha sido usado # vez} other {Este estilo ha sido usado # veces}}"
+    "styleUsedTimes": "{count, plural, one {Este estilo ha sido usado # vez} other {Este estilo ha sido usado # veces}}",
+    "report": "Reportar",
+    "reportPromptReason": "¿Por qué quieres reportar esta miniatura? (opcional)",
+    "reportThanks": "Gracias, lo revisaremos.",
+    "reportFailed": "Error al reportar. Reintentar"
   },
   "generate": {
     "tagline": "Crea miniaturas de YouTube con IA",
@@ -313,5 +328,12 @@
     "resultAlt": "Resultado {n}",
     "prev": "‹ Anterior",
     "next": "Siguiente ›"
+  },
+  "footer": {
+    "rights": "Todos los derechos reservados.",
+    "legalNotice": "Aviso legal",
+    "privacy": "Privacidad",
+    "terms": "Condiciones",
+    "cookies": "Cookies"
   }
 }

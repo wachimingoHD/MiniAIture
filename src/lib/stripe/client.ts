@@ -210,6 +210,21 @@ export async function cancelSubscriptionAtPeriodEnd(subscriptionId: string): Pro
   await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
 }
 
+// Cancela la suscripción INMEDIATAMENTE (sin prorrateo). Solo se usa al borrar
+// la cuenta: no puede quedar una suscripción viva facturando a un usuario que
+// ya no existe. Ignora "ya no existe" (resource_missing).
+export async function cancelSubscriptionImmediately(subscriptionId: string): Promise<void> {
+  const stripe = getStripeClient();
+  if (!stripe) throw new Error("Stripe no configurado: faltan STRIPE_* env vars.");
+  try {
+    await stripe.subscriptions.cancel(subscriptionId);
+  } catch (err) {
+    const e = err as { code?: unknown };
+    if (e?.code === "resource_missing") return;
+    throw err;
+  }
+}
+
 // Deshace una cancelación programada: la suscripción vuelve a renovarse con
 // normalidad. No cobra nada (el periodo en curso ya está pagado).
 export async function resumeSubscription(subscriptionId: string): Promise<void> {

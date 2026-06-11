@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { Baloo_2, DM_Sans } from "next/font/google";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { Analytics } from "@vercel/analytics/next";
 import "../globals.css";
 import Sidebar from "@/components/ui/Sidebar";
 import PageHeader from "@/components/ui/PageHeader";
+import Footer from "@/components/ui/Footer";
 import { SITE_URL } from "@/lib/seo";
 import { routing } from "@/i18n/routing";
 
@@ -55,11 +57,13 @@ export async function generateMetadata({
       locale: ogLocale,
       siteName: "MiniAItura",
       url: `${SITE_URL}/${locale}`,
+      images: [{ url: "/og.png", width: 1200, height: 630 }],
     },
     twitter: {
       card: "summary_large_image",
       title: t("title"),
       description: t("twitterDescription"),
+      images: ["/og.png"],
     },
     // OJO: nada de `alternates.canonical` aquí. Un canonical en el layout se
     // hereda en TODAS las subpáginas y las marcaría como duplicados de la home.
@@ -112,11 +116,13 @@ export default async function LocaleLayout({
         />
         <NextIntlClientProvider>
           <Sidebar />
-          <div className="min-h-screen pl-16">
+          <div className="flex min-h-screen flex-col pl-16">
             <PageHeader />
-            {children}
+            <div className="flex-1">{children}</div>
+            <Footer />
           </div>
         </NextIntlClientProvider>
+        <Analytics />
       </body>
     </html>
   );

@@ -71,6 +71,18 @@ export async function verifyIdToken(idToken: string): Promise<VerifiedUser | nul
   }
 }
 
+// Borra el usuario de Firebase Auth (parte del borrado de cuenta RGPD).
+export async function deleteAuthUser(uid: string): Promise<boolean> {
+  const app = getAdminApp();
+  if (!app) return false;
+  try {
+    await getAuth(app).deleteUser(uid);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function adminFirestore(): Firestore | null {
   const app = getAdminApp();
   if (!app) return null;

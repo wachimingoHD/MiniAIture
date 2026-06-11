@@ -89,10 +89,12 @@ async function onSubscriptionDeleted(db: Firestore, sub: Stripe.Subscription): P
   }
 
   // El usuario deja de ser un referido ACTIVO de su creador (si lo tenía).
+  // Si el doc ya no existe (cuenta borrada), no hay nada que actualizar: un
+  // set() aquí recrearía un doc fantasma del usuario eliminado.
   const snap = await ref.get();
-  const referredBy = snap.exists
-    ? ((snap.data() as UserDocument).affiliate?.referredBy?.trim().toUpperCase() ?? null)
-    : null;
+  if (!snap.exists) return;
+  const referredBy =
+    (snap.data() as UserDocument).affiliate?.referredBy?.trim().toUpperCase() ?? null;
 
   await ref.set(
     {
@@ -201,6 +203,8 @@ async function onInvoiceFailed(db: Firestore, invoice: Stripe.Invoice): Promise<
     console.warn("Stripe webhook customer mismatch for user", ref.id);
     return;
   }
+  // No recrear un doc fantasma si la cuenta fue borrada.
+  if (!(await ref.get()).exists) return;
   await ref.set({ subscriptionStatus: "past_due" } satisfies Partial<UserDocument>, { merge: true });
 }
 

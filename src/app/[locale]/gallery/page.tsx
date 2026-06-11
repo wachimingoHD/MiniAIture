@@ -35,6 +35,7 @@ export async function generateMetadata({
       title: t("ogTitle"),
       description: t("ogDescription"),
       type: "website",
+      images: [{ url: "/og.png", width: 1200, height: 630 }],
     },
   };
 }

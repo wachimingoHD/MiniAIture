@@ -52,6 +52,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -150,6 +151,35 @@ export default function SettingsPage() {
       setMsg({ kind: "err", text: (err as Error).message });
     } finally {
       setCancelBusy(false);
+    }
+  };
+
+  // Borrado de cuenta (RGPD): doble confirmación; el backend cancela la
+  // suscripción en Stripe, borra datos/imágenes y elimina el usuario de Auth.
+  const deleteAccount = async () => {
+    if (!token) return;
+    if (!window.confirm(t("deleteConfirm1"))) return;
+    if (!window.confirm(t("deleteConfirm2"))) return;
+    setDeleteBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/user/delete", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setMsg({ kind: "err", text: data.error ?? t("deleteFailed") });
+        return;
+      }
+      // La sesión local sigue viva aunque el usuario ya no exista: cerrarla y
+      // volver a la portada.
+      await signOutUser().catch(() => {});
+      window.location.href = `/${locale}`;
+    } catch (err) {
+      setMsg({ kind: "err", text: (err as Error).message });
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -286,6 +316,32 @@ export default function SettingsPage() {
           {msg && (
             <p className={`text-sm ${msg.kind === "ok" ? "text-[var(--color-accent)]" : "text-[var(--color-danger)]"}`}>{msg.text}</p>
           )}
+
+          {/* Soporte y derechos RGPD (acceso, supresión, etc.) */}
+          <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-panel)] p-5">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">{t("support")}</h2>
+            <p className="mt-3 text-sm text-[var(--color-text-secondary)]">{t("supportText")}</p>
+            <a
+              href={`mailto:wachimingoyt.hd@gmail.com?subject=${encodeURIComponent(t("supportMailSubject"))}`}
+              className="mt-3 inline-block rounded-md border border-[var(--color-border-strong)] px-3 py-1.5 text-sm transition hover:border-[var(--color-accent)]"
+            >
+              {t("contactSupport")}
+            </a>
+          </section>
+
+          {/* Zona de peligro: borrado de cuenta */}
+          <section className="rounded-2xl border border-[var(--color-danger)]/40 bg-[var(--color-bg-panel)] p-5">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-danger)]">{t("dangerZone")}</h2>
+            <p className="mt-3 text-sm text-[var(--color-text-secondary)]">{t("deleteAccountText")}</p>
+            <button
+              type="button"
+              disabled={deleteBusy}
+              onClick={() => void deleteAccount()}
+              className="mt-3 rounded-md border border-[var(--color-danger)]/50 px-3 py-1.5 text-sm text-[var(--color-danger)] transition hover:border-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 disabled:opacity-50"
+            >
+              {deleteBusy ? t("deleting") : t("deleteAccount")}
+            </button>
+          </section>
 
           {/* Cerrar sesión */}
           <button

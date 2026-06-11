@@ -13,6 +13,7 @@ import { adminFirestore } from "@/lib/auth/firebase-admin";
 import { getGenerationById, type GenerationWithId } from "@/lib/firestore/generations";
 import { generateAltText } from "@/lib/seo";
 import UseInGenerator from "./use-in-generator";
+import ReportButton from "@/components/ui/ReportButton";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -128,9 +129,12 @@ export default async function GenerationDetailPage({
           </div>
           <div className="border-t border-[var(--color-border)] bg-[var(--color-bg-panel-2)] p-3">
             <UseInGenerator generationId={gen.id} content={gen.userPrompt} style={gen.stylePrompt || null} />
-            <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--color-text-muted)]">
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-muted)]">
               {gen.nicho && <span>{t("niche", { nicho: gen.nicho })}</span>}
               <span>{t("styleUsedTimes", { count: gen.timesStyleCopied })}</span>
+              <span className="ml-auto">
+                <ReportButton generationId={gen.id} />
+              </span>
             </div>
           </div>
         </figure>

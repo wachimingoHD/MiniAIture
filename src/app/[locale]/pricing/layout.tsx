@@ -21,6 +21,7 @@ export async function generateMetadata({
       description: t("ogDescription"),
       url: `${SITE_URL}/${locale}/pricing`,
       type: "website",
+      images: [{ url: "/og.png", width: 1200, height: 630 }],
     },
   };
 }

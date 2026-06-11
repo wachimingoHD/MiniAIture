@@ -107,7 +107,12 @@ export async function applyStripeSubscriptionToUser(
   if (!ref) return { ok: false, reason: "user_not_found" };
 
   const snap = await ref.get();
-  const existing = snap.exists ? (snap.data() as UserDocument) : null;
+  // Sin doc de usuario no hay nada que sincronizar. Ocurre tras borrar la
+  // cuenta (los eventos de la suscripción cancelada siguen llegando un rato);
+  // escribir aquí recrearía un doc fantasma. El alta normal siempre tiene doc
+  // (se crea al iniciar sesión, antes de cualquier checkout).
+  if (!snap.exists) return { ok: false, reason: "user_doc_missing", uid: ref.id };
+  const existing = snap.data() as UserDocument;
 
   // Defensa en profundidad: si el doc ya está vinculado a OTRO customer de
   // Stripe, no lo tocamos (evita que metadata.uid manipulada reescriba el plan

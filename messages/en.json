@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "title": "MiniAItura — AI YouTube Thumbnails",
-    "titleTemplate": "%s | MiniAItura",
+    "title": "MiniAItura | AI YouTube Thumbnails",
+    "titleTemplate": "MiniAItura | %s",
     "description": "Describe your video and our AI generates the perfect thumbnail for your niche. Click-worthy YouTube thumbnails, no design skills needed.",
     "ogDescription": "Describe your video and AI generates the perfect thumbnail for your niche.",
     "twitterDescription": "Generate professional YouTube thumbnails with AI in seconds.",
@@ -163,7 +163,18 @@
     "nameUpdated": "Name updated.",
     "cancelConfirm": "Cancel your PRO subscription? You'll stay PRO until the end of the period you already paid for.",
     "cancelFailed": "Could not cancel.",
-    "cancelSuccess": "Subscription canceled. You'll stay PRO until the end of the period."
+    "cancelSuccess": "Subscription canceled. You'll stay PRO until the end of the period.",
+    "support": "Support & privacy",
+    "supportText": "Any problem, question, or want to exercise your data-protection rights (access, deletion, portability…)? Write to us and we'll get back to you as soon as possible.",
+    "supportMailSubject": "MiniAItura support",
+    "contactSupport": "Contact support",
+    "dangerZone": "Danger zone",
+    "deleteAccountText": "Deleting your account permanently removes your thumbnails, credits and all your data. If you have an active PRO subscription, it is cancelled immediately (no refund for the current period).",
+    "deleteAccount": "Delete my account",
+    "deleting": "Deleting…",
+    "deleteConfirm1": "Are you sure you want to delete your account? All your thumbnails and data will be removed. This cannot be undone.",
+    "deleteConfirm2": "Final confirmation: your account and your subscription (if any) will be permanently deleted. Continue?",
+    "deleteFailed": "Account could not be deleted. Please try again."
   },
   "galleryPersonal": {
     "headerSubtitle": "Your gallery",
@@ -230,7 +241,11 @@
     "content": "Content",
     "style": "Style",
     "niche": "Niche: {nicho}",
-    "styleUsedTimes": "{count, plural, one {This style has been used # time} other {This style has been used # times}}"
+    "styleUsedTimes": "{count, plural, one {This style has been used # time} other {This style has been used # times}}",
+    "report": "Report",
+    "reportPromptReason": "Why do you want to report this thumbnail? (optional)",
+    "reportThanks": "Thanks, we'll review it.",
+    "reportFailed": "Report failed. Retry"
   },
   "generate": {
     "tagline": "Create YouTube thumbnails with AI",
@@ -313,5 +328,12 @@
     "resultAlt": "Result {n}",
     "prev": "‹ Previous",
     "next": "Next ›"
+  },
+  "footer": {
+    "rights": "All rights reserved.",
+    "legalNotice": "Legal notice",
+    "privacy": "Privacy",
+    "terms": "Terms",
+    "cookies": "Cookies"
   }
 }

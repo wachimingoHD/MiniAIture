@@ -28,6 +28,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { path: "/generate", priority: 0.9, changeFrequency: "monthly" },
     { path: "/gallery", priority: 0.9, changeFrequency: "daily" },
     { path: "/pricing", priority: 0.7, changeFrequency: "monthly" },
+    { path: "/legal/legal-notice", priority: 0.2, changeFrequency: "monthly" },
+    { path: "/legal/privacy", priority: 0.2, changeFrequency: "monthly" },
+    { path: "/legal/terms", priority: 0.2, changeFrequency: "monthly" },
+    { path: "/legal/cookies", priority: 0.2, changeFrequency: "monthly" },
   ];
 
   const staticPages: MetadataRoute.Sitemap = LOCALES.flatMap((locale) =>
