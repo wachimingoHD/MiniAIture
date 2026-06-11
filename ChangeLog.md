@@ -8,6 +8,13 @@ Format: `YYYY-MM-DD` headers (newest on top). Each entry is a bullet list. When 
 
 ---
 
+## 2026-06-12 - Fecha correcta al cancelar o renovar PRO
+
+- `src/lib/stripe/periods.ts` centraliza la lectura de periodos de Stripe desde la suscripción (`current_period_end` o `items.data[].current_period_end`) y desde líneas de factura (`invoice.lines.data[].period.end`).
+- `POST /api/billing/cancel` y `POST /api/billing/reactivate` guardan inmediatamente el `subscriptionEnd` devuelto por Stripe al actualizar la suscripción, evitando que Ajustes muestre una fecha antigua.
+- `invoice.payment_succeeded` deja de usar `invoice.period_end` como fin de suscripción. Ahora solo actualiza `subscriptionEnd` con el periodo cubierto por líneas de suscripción o conserva el valor anterior, evitando que la UI muestre "se cancelará hoy" tras la primera factura.
+- `/api/user/credits` repara de forma defensiva un `subscriptionEnd` sospechoso consultando Stripe si hay `stripeSubscriptionId` y la fecha guardada está vencida o a menos de 36h. Esto corrige perfiles ya afectados al volver a cargar Ajustes.
+
 ## 2026-06-11 - Borrado de cuenta bloqueado si la suscripción aún renueva
 
 - `src/lib/account-deletion-policy.ts` centraliza la regla de suscripción que aún renueva. `POST /api/user/delete` rechaza con `409` y `reason: "subscription_must_be_cancelled"` cuando el usuario tiene `stripeSubscriptionId`, estado distinto de `canceled` y `cancelAtPeriodEnd !== true`. Así no se puede programar un borrado diferido mientras la suscripción todavía puede renovar.

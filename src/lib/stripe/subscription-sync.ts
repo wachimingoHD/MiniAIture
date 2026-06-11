@@ -7,28 +7,16 @@ import {
   retrieveSubscription,
 } from "@/lib/stripe/client";
 import { adjustActiveReferrals } from "@/lib/firestore/affiliates";
-
-interface SubscriptionPeriodView {
-  current_period_start?: number;
-  current_period_end?: number;
-  start_date?: number;
-  items?: {
-    data?: Array<{
-      current_period_start?: number;
-      current_period_end?: number;
-    }>;
-  };
-}
+import {
+  subscriptionPeriodEndMs,
+  subscriptionPeriodStartMs,
+} from "@/lib/stripe/periods";
 
 export interface StripeSyncResult {
   ok: boolean;
   uid?: string;
   subscriptionId?: string;
   reason?: string;
-}
-
-function asPeriodView(sub: Stripe.Subscription): SubscriptionPeriodView {
-  return sub as unknown as SubscriptionPeriodView;
 }
 
 export function customerIdOf(sub: Stripe.Subscription): string | null {
@@ -122,21 +110,9 @@ export async function applyStripeSubscriptionToUser(
   }
 
   const cfg = getRuntimeConfig();
-  const view = asPeriodView(sub);
-  const firstItem = view.items?.data?.[0];
   const now = Date.now();
-  const subscriptionStart =
-    typeof view.current_period_start === "number"
-      ? view.current_period_start * 1000
-      : typeof firstItem?.current_period_start === "number"
-        ? firstItem.current_period_start * 1000
-        : (view.start_date ?? Math.floor(now / 1000)) * 1000;
-  const subscriptionEnd =
-    typeof view.current_period_end === "number"
-      ? view.current_period_end * 1000
-      : typeof firstItem?.current_period_end === "number"
-        ? firstItem.current_period_end * 1000
-        : now + 30 * 24 * 60 * 60 * 1000;
+  const subscriptionStart = subscriptionPeriodStartMs(sub) ?? now;
+  const subscriptionEnd = subscriptionPeriodEndMs(sub) ?? now + 30 * 24 * 60 * 60 * 1000;
   const status = subscriptionStatusToApp(sub.status);
   const grantsProAccess = subscriptionGrantsProAccess(sub.status);
   const subscriptionEndIso = new Date(subscriptionEnd).toISOString();

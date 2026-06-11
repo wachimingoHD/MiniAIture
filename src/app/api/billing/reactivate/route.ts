@@ -8,7 +8,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminFirestore, verifyIdToken } from "@/lib/auth/firebase-admin";
 import { getOrCreateUserDocument } from "@/lib/firestore/users";
+import type { UserDocument } from "@/lib/firestore/schema";
 import { resumeSubscription } from "@/lib/stripe/client";
+import { isoFromMs, parseIsoMs, subscriptionPeriodEndMs } from "@/lib/stripe/periods";
 import { readBearerToken } from "@/lib/server/request";
 import { safeErrorMessage } from "@/lib/server/errors";
 
@@ -34,10 +36,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    await resumeSubscription(userDoc.stripeSubscriptionId);
+    const subscription = await resumeSubscription(userDoc.stripeSubscriptionId);
+    const renewsOn =
+      isoFromMs(subscriptionPeriodEndMs(subscription)) ??
+      isoFromMs(parseIsoMs(userDoc.subscriptionEnd)) ??
+      userDoc.subscriptionEnd ??
+      null;
     // El webhook subscription.updated confirmará; esto deja la UI coherente ya.
-    await db.collection("users").doc(user.uid).set({ cancelAtPeriodEnd: false }, { merge: true });
-    return NextResponse.json({ ok: true, renewsOn: userDoc.subscriptionEnd ?? null });
+    const patch: Partial<UserDocument> = { cancelAtPeriodEnd: false };
+    if (renewsOn) patch.subscriptionEnd = renewsOn;
+    await db.collection("users").doc(user.uid).set(patch, { merge: true });
+    return NextResponse.json({ ok: true, renewsOn });
   } catch (err) {
     return NextResponse.json({ error: safeErrorMessage(err, "reactivate_failed") }, { status: 500 });
   }

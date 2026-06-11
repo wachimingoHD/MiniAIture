@@ -12,6 +12,7 @@ import {
   applyStripeSubscriptionToUser,
   syncCheckoutSessionToUser,
 } from "@/lib/stripe/subscription-sync";
+import { invoiceSubscriptionPeriodEndMs, isoFromMs, parseIsoMs } from "@/lib/stripe/periods";
 
 export const runtime = "nodejs";
 
@@ -19,7 +20,6 @@ const PROCESSED_EVENTS_COLLECTION = "stripe_processed_events";
 
 interface InvoicePeriodView {
   subscription?: string;
-  period_end?: number;
   amount_paid?: number;
   // Snapshot de la metadata de la suscripción que Stripe incluye en la factura
   // (la forma cambió entre versiones de API: leemos ambas defensivamente).
@@ -142,11 +142,10 @@ async function onInvoicePaid(db: Firestore, invoice: Stripe.Invoice): Promise<vo
     const currentStats = { ...emptyUserStats(), ...(current.stats ?? {}) };
 
     const invoicePeriodEnd =
-      typeof invoiceView.period_end === "number"
-        ? invoiceView.period_end * 1000
-        : current.subscriptionEnd
-          ? Date.parse(current.subscriptionEnd)
-          : undefined;
+      invoiceSubscriptionPeriodEndMs(invoice) ??
+      parseIsoMs(current.subscriptionEnd) ??
+      parseIsoMs(current.credits.monthlyResetAt);
+    const periodEndIso = isoFromMs(invoicePeriodEnd);
     const now = Date.now();
 
     tx.set(
@@ -154,18 +153,13 @@ async function onInvoicePaid(db: Firestore, invoice: Stripe.Invoice): Promise<vo
       {
         plan: "pro",
         subscriptionStatus: "active",
-        subscriptionEnd: new Date(invoicePeriodEnd ?? now).toISOString(),
+        ...(periodEndIso ? { subscriptionEnd: periodEndIso } : {}),
         credits: {
           ...current.credits,
           daily: cfg.credits.proDaily,
           dailyResetAt: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
           monthly: cfg.credits.proMonthly,
-          monthlyResetAt: new Date(
-            invoicePeriodEnd ??
-              (current.credits.monthlyResetAt
-                ? Date.parse(current.credits.monthlyResetAt)
-                : now + 30 * 24 * 60 * 60 * 1000),
-          ).toISOString(),
+          monthlyResetAt: periodEndIso ?? current.credits.monthlyResetAt,
         },
         stats: {
           ...currentStats,

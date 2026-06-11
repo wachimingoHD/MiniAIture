@@ -204,10 +204,10 @@ export async function getProPriceSnapshot(): Promise<StripePriceSnapshot | null>
 
 // Programa la cancelación al final del periodo ya pagado (no corta el acceso
 // inmediato). El webhook customer.subscription.updated/deleted actualizará el doc.
-export async function cancelSubscriptionAtPeriodEnd(subscriptionId: string): Promise<void> {
+export async function cancelSubscriptionAtPeriodEnd(subscriptionId: string): Promise<Stripe.Subscription> {
   const stripe = getStripeClient();
   if (!stripe) throw new Error("Stripe no configurado: faltan STRIPE_* env vars.");
-  await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+  return stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
 }
 
 // Cancela la suscripción INMEDIATAMENTE (sin prorrateo). Solo se usa al borrar
@@ -227,10 +227,10 @@ export async function cancelSubscriptionImmediately(subscriptionId: string): Pro
 
 // Deshace una cancelación programada: la suscripción vuelve a renovarse con
 // normalidad. No cobra nada (el periodo en curso ya está pagado).
-export async function resumeSubscription(subscriptionId: string): Promise<void> {
+export async function resumeSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
   const stripe = getStripeClient();
   if (!stripe) throw new Error("Stripe no configurado: faltan STRIPE_* env vars.");
-  await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: false });
+  return stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: false });
 }
 
 export function verifyWebhookSignature(payload: string, signature: string): Stripe.Event {

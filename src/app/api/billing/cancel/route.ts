@@ -6,7 +6,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminFirestore, verifyIdToken } from "@/lib/auth/firebase-admin";
 import { getOrCreateUserDocument } from "@/lib/firestore/users";
+import type { UserDocument } from "@/lib/firestore/schema";
 import { cancelSubscriptionAtPeriodEnd } from "@/lib/stripe/client";
+import { isoFromMs, parseIsoMs, subscriptionPeriodEndMs } from "@/lib/stripe/periods";
 import { readBearerToken } from "@/lib/server/request";
 import { safeErrorMessage } from "@/lib/server/errors";
 
@@ -29,14 +31,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    await cancelSubscriptionAtPeriodEnd(userDoc.stripeSubscriptionId);
+    const subscription = await cancelSubscriptionAtPeriodEnd(userDoc.stripeSubscriptionId);
+    const accessUntil =
+      isoFromMs(subscriptionPeriodEndMs(subscription)) ??
+      isoFromMs(parseIsoMs(userDoc.subscriptionEnd)) ??
+      userDoc.subscriptionEnd ??
+      null;
     // Sigue siendo PRO hasta el fin del periodo; solo marcamos la intención.
     // El webhook (subscription.deleted) pondrá plan=free cuando llegue la fecha.
-    await db
-      .collection("users")
-      .doc(user.uid)
-      .set({ cancelAtPeriodEnd: true }, { merge: true });
-    return NextResponse.json({ ok: true, cancelAtPeriodEnd: true, accessUntil: userDoc.subscriptionEnd ?? null });
+    const patch: Partial<UserDocument> = { cancelAtPeriodEnd: true };
+    if (accessUntil) patch.subscriptionEnd = accessUntil;
+    await db.collection("users").doc(user.uid).set(patch, { merge: true });
+    return NextResponse.json({ ok: true, cancelAtPeriodEnd: true, accessUntil });
   } catch (err) {
     return NextResponse.json({ error: safeErrorMessage(err, "cancel_failed") }, { status: 500 });
   }

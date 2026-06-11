@@ -5,9 +5,48 @@ import { getOrCreateUserDocument } from "@/lib/firestore/users";
 import { applyResetsIfDue } from "@/lib/firestore/credits";
 import { writeCreditTransactionInTx } from "@/lib/firestore/credit-transactions";
 import type { UserDocument } from "@/lib/firestore/schema";
+import { retrieveSubscription } from "@/lib/stripe/client";
+import { isoFromMs, parseIsoMs, subscriptionPeriodEndMs } from "@/lib/stripe/periods";
+import { safeErrorMessage } from "@/lib/server/errors";
 import { readBearerToken } from "@/lib/server/request";
 
 export const runtime = "nodejs";
+
+const SUSPICIOUS_SUBSCRIPTION_END_WINDOW_MS = 36 * 60 * 60 * 1000;
+
+async function refreshSuspiciousStripePeriod(
+  db: NonNullable<ReturnType<typeof adminFirestore>>,
+  uid: string,
+  doc: UserDocument,
+): Promise<UserDocument> {
+  if (!doc.stripeSubscriptionId || doc.subscriptionStatus === "canceled") return doc;
+
+  const currentEndMs = parseIsoMs(doc.subscriptionEnd);
+  const looksSuspicious =
+    !currentEndMs || currentEndMs < Date.now() + SUSPICIOUS_SUBSCRIPTION_END_WINDOW_MS;
+  if (!looksSuspicious) return doc;
+
+  try {
+    const sub = await retrieveSubscription(doc.stripeSubscriptionId);
+    const periodEndIso = isoFromMs(subscriptionPeriodEndMs(sub));
+    const patch: Partial<UserDocument> = {};
+
+    if (periodEndIso && periodEndIso !== doc.subscriptionEnd) {
+      patch.subscriptionEnd = periodEndIso;
+      patch.credits = { ...doc.credits, monthlyResetAt: periodEndIso };
+    }
+    if (typeof sub.cancel_at_period_end === "boolean" && sub.cancel_at_period_end !== doc.cancelAtPeriodEnd) {
+      patch.cancelAtPeriodEnd = sub.cancel_at_period_end;
+    }
+
+    if (Object.keys(patch).length === 0) return doc;
+    await db.collection("users").doc(uid).set(patch, { merge: true });
+    return { ...doc, ...patch };
+  } catch (err) {
+    console.warn("Could not refresh Stripe subscription period", uid, safeErrorMessage(err, "stripe_refresh_failed"));
+    return doc;
+  }
+}
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const token = readBearerToken(req);
@@ -28,7 +67,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   const cfg = getRuntimeConfig();
-  const initial = await getOrCreateUserDocument(db, { uid: user.uid, email: user.email, displayName: user.name });
+  const initial = await refreshSuspiciousStripePeriod(
+    db,
+    user.uid,
+    await getOrCreateUserDocument(db, { uid: user.uid, email: user.email, displayName: user.name }),
+  );
   const dailyResetMs = Date.parse(initial.credits.dailyResetAt);
   const dailyDue = !Number.isFinite(dailyResetMs) || Date.now() > dailyResetMs;
   const monthlyResetMs = Date.parse(initial.credits.monthlyResetAt);
