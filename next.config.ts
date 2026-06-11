@@ -52,6 +52,14 @@ const nextConfig: NextConfig = {
           { key: "X-DNS-Prefetch-Control", value: "off" },
         ],
       },
+      {
+        // Las rutas proxificadas de Firebase Auth (/__/auth/iframe) deben poder
+        // incrustarse en NUESTRAS páginas (el SDK las usa para entregar el
+        // resultado del login). El DENY global las rompía: popup en blanco.
+        // Esta regla va después del catch-all para sobreescribir solo aquí.
+        source: "/__/:path*",
+        headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
+      },
     ];
   },
 };
