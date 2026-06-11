@@ -106,7 +106,7 @@ const es: Record<LegalSlug, LegalDocument> = {
       {
         heading: "5. Cuánto tiempo",
         paragraphs: [
-          "Conservamos tus datos mientras tengas cuenta. Puedes solicitar el borrado de tu cuenta en cualquier momento desde Ajustes: el borrado se hace efectivo en un plazo aproximado de 24-48 horas, y elimina tus miniaturas, tus créditos y tus datos (si tienes suscripción, se cancela). Si inicias sesión de nuevo antes de que se ejecute, la solicitud se cancela. Los datos de facturación se conservan el tiempo que exige la normativa fiscal.",
+          "Conservamos tus datos mientras tengas cuenta. Puedes solicitar el borrado de tu cuenta desde Ajustes: el borrado se hace efectivo en un plazo aproximado de 24-48 horas, y elimina tus miniaturas, tus créditos y tus datos. Si tienes una suscripción PRO que todavía renueva, debes cancelarla antes de solicitar el borrado. Si inicias sesión de nuevo antes de que se ejecute, la solicitud se cancela. Los datos de facturación se conservan el tiempo que exige la normativa fiscal.",
         ],
       },
       {
@@ -140,6 +140,7 @@ const es: Record<LegalSlug, LegalDocument> = {
         heading: "3. Suscripción y cancelación",
         paragraphs: [
           "La suscripción PRO se cobra por adelantado a través de Stripe y se renueva automáticamente cada mes. Puedes cancelarla cuando quieras desde Ajustes: la cancelación surte efecto al final del periodo ya pagado, y hasta entonces conservas todos los beneficios PRO. También puedes deshacer la cancelación antes de esa fecha.",
+          "Para solicitar el borrado de una cuenta con suscripción PRO, primero debes cancelar la renovación desde Ajustes. Después podrás programar el borrado diferido de la cuenta.",
           "Como los créditos PRO se activan en el momento del pago, al suscribirte aceptas que el servicio empieza de inmediato. Si no has usado ningún crédito ni función PRO, tienes 14 días para pedir la devolución escribiendo al correo de contacto.",
         ],
       },
@@ -281,7 +282,7 @@ const en: Record<LegalSlug, LegalDocument> = {
       {
         heading: "5. For how long",
         paragraphs: [
-          "We keep your data while your account exists. You can request account deletion at any time from Settings: it takes effect within roughly 24-48 hours and removes your thumbnails, credits and data (any subscription is cancelled). Signing in again before it runs cancels the request. Billing records are kept for as long as tax law requires.",
+          "We keep your data while your account exists. You can request account deletion from Settings: it takes effect within roughly 24-48 hours and removes your thumbnails, credits and data. If you have a PRO subscription that still renews, you must cancel it before requesting deletion. Signing in again before it runs cancels the request. Billing records are kept for as long as tax law requires.",
         ],
       },
       {
@@ -315,6 +316,7 @@ const en: Record<LegalSlug, LegalDocument> = {
         heading: "3. Subscription and cancellation",
         paragraphs: [
           "The PRO subscription is charged in advance through Stripe and renews automatically every month. You can cancel any time from Settings: cancellation takes effect at the end of the paid period, and you keep all PRO benefits until then. You can also undo the cancellation before that date.",
+          "To request deletion of an account with a PRO subscription, you must first cancel renewal from Settings. After that you can schedule the deferred account deletion.",
           "Since PRO credits activate the moment you pay, by subscribing you accept that the service starts immediately. If you have not used any PRO credit or feature, you have 14 days to request a refund by writing to the contact email.",
         ],
       },

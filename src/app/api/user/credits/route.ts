@@ -87,5 +87,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     subscriptionStart: finalDoc.subscriptionStart ?? null,
     subscriptionEnd: finalDoc.subscriptionEnd ?? null,
     cancelAtPeriodEnd: finalDoc.cancelAtPeriodEnd ?? false,
+    stripeSubscriptionId: finalDoc.stripeSubscriptionId ?? null,
   });
 }

@@ -6,6 +6,10 @@
 import { useEffect, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { Link } from "@/i18n/navigation";
+import {
+  ACCOUNT_DELETION_SUBSCRIPTION_REASON,
+  hasRenewingStripeSubscription,
+} from "@/lib/account-deletion-policy";
 import { signInWithGoogle, signOutUser, subscribeToAuthState } from "@/lib/auth/firebase-client";
 
 interface Credits {
@@ -22,6 +26,7 @@ interface Profile {
   subscriptionStatus: string | null;
   subscriptionEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  stripeSubscriptionId: string | null;
 }
 
 function timeUntil(iso: string | undefined, now: number, soonLabel: string): string {
@@ -55,6 +60,7 @@ export default function SettingsPage() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const deletionBlockedBySubscription = profile ? hasRenewingStripeSubscription(profile) : false;
 
   // Reloj para la cuenta atrás (1/min, página no crítica de rendimiento).
   useEffect(() => {
@@ -154,10 +160,14 @@ export default function SettingsPage() {
     }
   };
 
-  // Borrado de cuenta (RGPD): doble confirmación; el backend cancela la
-  // suscripción en Stripe, borra datos/imágenes y elimina el usuario de Auth.
+  // Borrado de cuenta (RGPD): doble confirmación. Si una suscripción Stripe aún
+  // renueva, se exige cancelarla primero para evitar cobros durante la espera.
   const deleteAccount = async () => {
     if (!token) return;
+    if (deletionBlockedBySubscription) {
+      setMsg({ kind: "err", text: t("deleteRequiresSubscriptionCancel") });
+      return;
+    }
     if (!window.confirm(t("deleteConfirm1"))) return;
     if (!window.confirm(t("deleteConfirm2"))) return;
     setDeleteBusy(true);
@@ -167,9 +177,15 @@ export default function SettingsPage() {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json()) as { error?: string; reason?: string };
       if (!res.ok) {
-        setMsg({ kind: "err", text: data.error ?? t("deleteFailed") });
+        setMsg({
+          kind: "err",
+          text:
+            data.reason === ACCOUNT_DELETION_SUBSCRIPTION_REASON
+              ? t("deleteRequiresSubscriptionCancel")
+              : data.error ?? t("deleteFailed"),
+        });
         return;
       }
       // Borrado DIFERIDO: la cuenta queda en espera ~24-48h. Cerramos sesión;
@@ -334,9 +350,14 @@ export default function SettingsPage() {
           <section className="rounded-2xl border border-[var(--color-danger)]/40 bg-[var(--color-bg-panel)] p-5">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-danger)]">{t("dangerZone")}</h2>
             <p className="mt-3 text-sm text-[var(--color-text-secondary)]">{t("deleteAccountText")}</p>
+            {deletionBlockedBySubscription && (
+              <p className="mt-3 rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-2 text-sm text-[var(--color-danger)]">
+                {t("deleteRequiresSubscriptionCancel")}
+              </p>
+            )}
             <button
               type="button"
-              disabled={deleteBusy}
+              disabled={deleteBusy || deletionBlockedBySubscription}
               onClick={() => void deleteAccount()}
               className="mt-3 rounded-md border border-[var(--color-danger)]/50 px-3 py-1.5 text-sm text-[var(--color-danger)] transition hover:border-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 disabled:opacity-50"
             >

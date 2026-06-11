@@ -62,6 +62,7 @@ async function generateSuggestion(args: {
         apiKey: args.apiKey,
         model,
         timeoutMs: 18_000,
+        disableThinking: true,
       });
       if (response.ok) {
         const text = cleanSuggestion(response.text);

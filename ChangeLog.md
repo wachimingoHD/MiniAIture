@@ -8,6 +8,16 @@ Format: `YYYY-MM-DD` headers (newest on top). Each entry is a bullet list. When 
 
 ---
 
+## 2026-06-11 - Borrado de cuenta bloqueado si la suscripción aún renueva
+
+- `src/lib/account-deletion-policy.ts` centraliza la regla de suscripción que aún renueva. `POST /api/user/delete` rechaza con `409` y `reason: "subscription_must_be_cancelled"` cuando el usuario tiene `stripeSubscriptionId`, estado distinto de `canceled` y `cancelAtPeriodEnd !== true`. Así no se puede programar un borrado diferido mientras la suscripción todavía puede renovar.
+- `/dashboard/settings` recibe `stripeSubscriptionId` desde `/api/user/credits`, muestra un aviso en la zona de peligro y desactiva el botón de borrar hasta que el usuario cancele la suscripción desde esa misma página.
+- Textos de Ajustes y legales actualizados en ES/EN para indicar que primero hay que cancelar la renovación PRO y luego solicitar el borrado.
+
+## 2026-06-11 - Sugerencias IA sin thinking
+
+- `src/app/api/suggest-field/route.ts` ahora llama a Gemini texto con `disableThinking: true`, igual que los endpoints legacy de sugerencia. Esto envía `thinkingConfig: { thinkingBudget: 0 }` desde `src/lib/geminiText.ts` y evita la latencia extra al generar sugerencias de `Contenido` o `Estilo` desde `/generate`.
+
 ## 2026-06-10 - Portada: modal de miniaturas y filtro de verticales
 
 - `src/app/[locale]/page.tsx` ya no manda `userPrompt` como título de las miniaturas de portada. Si `videoTitle` viene vacío o `null`, el modal no muestra encabezado y la descripción queda solo como contenido.
