@@ -79,9 +79,12 @@ export async function executeAccountDeletion(
     }
   }
 
-  // 3) Documentos de Firestore.
+  // 3) Documentos de Firestore. `usernames` incluido: sin esto, la reserva del
+  // nombre público del usuario borrado quedaba huérfana y ese nombre quedaba
+  // bloqueado para siempre.
   await deleteByQuery(db, db.collection(GENERATIONS_COLLECTION).where("userId", "==", uid));
   await deleteByQuery(db, db.collection(CREDIT_TRANSACTIONS_COLLECTION).where("userId", "==", uid));
+  await deleteByQuery(db, db.collection("usernames").where("uid", "==", uid));
   await userRef.delete();
 
   // 4) Usuario de Firebase Auth (al final: si algo de arriba falla, el doc
