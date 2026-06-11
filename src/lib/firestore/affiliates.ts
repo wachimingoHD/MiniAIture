@@ -34,8 +34,18 @@ export interface Affiliate {
   totalPaidMonths?: number;
   /** Suscriptores con suscripción abierta AHORA atribuidos a este código. */
   activeReferrals?: number;
-  /** Comisión total acumulada en céntimos (pagada o no). */
+  /**
+   * Comisión TOTAL histórica en céntimos. PERMANENTE: solo sube, nunca se
+   * decrementa ni se pone a cero. Es el total de por vida ganado por el creador.
+   */
   totalEarnedMinor?: number;
+  /**
+   * Comisión PENDIENTE de pagar en céntimos. Sube igual que totalEarnedMinor en
+   * cada factura, pero a ESTE campo lo ponemos a 0 a mano cuando le pagamos al
+   * creador. Así, lo que le debes en cada liquidación = este número. Nada del
+   * código lo decrementa; solo lo incrementa el webhook y lo reseteas tú.
+   */
+  pendingPayoutMinor?: number;
 }
 
 export function buildAffiliate(args: {
@@ -113,10 +123,13 @@ export async function recordAffiliateCommission(db: Firestore, args: {
   }
 
   // Contadores agregados del creador (solo cuando el asiento es nuevo).
+  // totalEarnedMinor = histórico permanente; pendingPayoutMinor = lo que le
+  // debes ahora mismo (lo pones a 0 a mano al liquidar). Ambos suben aquí.
   await affiliate.ref.set(
     {
       totalPaidMonths: FieldValue.increment(1),
       totalEarnedMinor: FieldValue.increment(commissionMinor),
+      pendingPayoutMinor: FieldValue.increment(commissionMinor),
     },
     { merge: true },
   );

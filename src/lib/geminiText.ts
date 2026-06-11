@@ -26,6 +26,10 @@ export interface CallGeminiFlashArgs {
   apiKey: string;
   model?: string;
   timeoutMs?: number;
+  // Gemini 2.5 activa "thinking" por defecto, lo que añade ~3-5 s de latencia.
+  // Para tareas simples de reescritura (sugeridores) no aporta calidad: ponerlo
+  // a true manda thinkingBudget:0 y la respuesta es casi instantánea.
+  disableThinking?: boolean;
 }
 
 export type CallGeminiFlashResult =
@@ -51,6 +55,7 @@ export async function callGeminiFlash(args: CallGeminiFlashArgs): Promise<CallGe
     generationConfig: {
       responseModalities: ["TEXT"],
       temperature: 0.7,
+      ...(args.disableThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
     },
   };
 

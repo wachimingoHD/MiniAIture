@@ -20,7 +20,6 @@ import {
 } from "@/lib/auth/firebase-admin";
 import { readBearerToken } from "@/lib/server/request";
 import { cancelSubscriptionImmediately } from "@/lib/stripe/client";
-import { adjustActiveReferrals } from "@/lib/firestore/affiliates";
 import { getFirebaseStorageConfig } from "@/lib/storage/firebase-storage";
 import {
   CREDIT_TRANSACTIONS_COLLECTION,
@@ -67,6 +66,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // 1) Suscripción: cancelar YA en Stripe. Si Stripe falla (caído, clave mal),
   // abortamos: mejor que el usuario reintente a dejar una suscripción huérfana.
+  // NO ajustamos aquí el contador de referidos: la cancelación dispara el
+  // webhook subscription.deleted, que lo decrementa una sola vez a partir de la
+  // metadata de la suscripción. Hacerlo también aquí causaba doble decremento.
   if (userDoc?.stripeSubscriptionId && userDoc.subscriptionStatus !== "canceled") {
     try {
       await cancelSubscriptionImmediately(userDoc.stripeSubscriptionId);
@@ -78,13 +80,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         },
         { status: 502 },
       );
-    }
-    // El usuario deja de contar como referido activo de su creador. Se hace
-    // aquí (y el webhook subscription.deleted ya no lo hará: el doc del
-    // usuario habrá desaparecido cuando llegue).
-    const referredBy = userDoc.affiliate?.referredBy?.trim().toUpperCase();
-    if (referredBy) {
-      await adjustActiveReferrals(db, referredBy, -1).catch(() => {});
     }
   }
 

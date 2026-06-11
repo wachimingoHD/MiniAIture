@@ -77,6 +77,18 @@ async function customerMatches(
 
 async function onSubscriptionDeleted(db: Firestore, sub: Stripe.Subscription): Promise<void> {
   const customerId = customerIdOf(sub);
+
+  // El contador de referidos ACTIVOS se ajusta a partir de la metadata de la
+  // PROPIA suscripción (no del doc del usuario). Así se decrementa EXACTAMENTE
+  // una vez por evento subscription.deleted, exista o no todavía el doc del
+  // usuario. Antes lo hacían a la vez este webhook y el endpoint de borrado de
+  // cuenta → doble decremento (1 → -1). Ahora es fuente única: solo el webhook.
+  const referredBy =
+    typeof sub.metadata?.affiliateCode === "string" && sub.metadata.affiliateCode.trim()
+      ? sub.metadata.affiliateCode.trim().toUpperCase()
+      : null;
+  if (referredBy) await adjustActiveReferrals(db, referredBy, -1);
+
   const ref = await findUserRef(db, {
     uid: (sub.metadata?.uid as string | undefined) ?? null,
     stripeCustomerId: customerId,
@@ -88,28 +100,21 @@ async function onSubscriptionDeleted(db: Firestore, sub: Stripe.Subscription): P
     return;
   }
 
-  // El usuario deja de ser un referido ACTIVO de su creador (si lo tenía).
-  // Si el doc ya no existe (cuenta borrada), no hay nada que actualizar: un
-  // set() aquí recrearía un doc fantasma del usuario eliminado.
-  const snap = await ref.get();
-  if (!snap.exists) return;
-  const referredBy =
-    (snap.data() as UserDocument).affiliate?.referredBy?.trim().toUpperCase() ?? null;
-
-  await ref.set(
-    {
+  // Degradar el doc a FREE. Usamos update() (NO set/merge) a propósito: update
+  // falla atómicamente si el doc ya no existe, en vez de recrearlo. Esto evita
+  // el "doc fantasma" que aparecía al borrar la cuenta (el borrado elimina el
+  // doc y este webnook, llegando justo después, lo resucitaba con set/merge).
+  // El bolsillo mensual se retira (notación de punto para no pisar `daily`).
+  try {
+    await ref.update({
       plan: "free",
       subscriptionStatus: "canceled",
       cancelAtPeriodEnd: false,
-      // El bolsillo mensual es un beneficio PRO: al terminar la suscripción se
-      // retira (el diario se renormaliza solo al allowance FREE en el próximo
-      // reset diario).
-      credits: { monthly: 0 } as UserDocument["credits"],
-    } satisfies Partial<UserDocument>,
-    { merge: true },
-  );
-
-  if (referredBy) await adjustActiveReferrals(db, referredBy, -1);
+      "credits.monthly": 0,
+    });
+  } catch {
+    // Doc inexistente (cuenta borrada): no hay nada que degradar. OK.
+  }
 }
 
 async function onInvoicePaid(db: Firestore, invoice: Stripe.Invoice): Promise<void> {

@@ -123,6 +123,8 @@ export async function handleSuggestionRequest(
       contents: [{ role: "user", parts: [{ text: opts.buildMessage(fields) }] }],
       apiKey: geminiKey,
       model: SUGGESTION_MODEL,
+      // Reescritura simple: sin "thinking" para que responda al instante.
+      disableThinking: true,
     });
 
     const suggestion = response.ok ? response.text.trim() : "";
