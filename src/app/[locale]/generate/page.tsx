@@ -891,6 +891,7 @@ export default function HomePage() {
             authToken={authToken}
             publishMsg={publishMsg}
             onPublishMsg={setPublishMsg}
+            generationError={generationError}
           />
         </section>
       </div>
@@ -998,6 +999,7 @@ function ResultPanel({
   authToken,
   publishMsg,
   onPublishMsg,
+  generationError,
 }: {
   result: GenerateResponse | null;
   generating: boolean;
@@ -1006,80 +1008,99 @@ function ResultPanel({
   authToken: string | null;
   publishMsg: string | null;
   onPublishMsg: (m: string | null) => void;
+  generationError: string | null;
 }) {
   const t = useTranslations("generate");
   const [zoomed, setZoomed] = useState<number | null>(null);
 
   if (generating) {
     return (
-      <Panel title={t("resultTitle")}>
-        <MascotLoader fetchMode={fetchMode} />
-      </Panel>
+      <div className="space-y-3">
+        <Panel title={t("resultTitle")}>
+          <MascotLoader fetchMode={fetchMode} />
+        </Panel>
+        <GenerationErrorNotice error={generationError} />
+      </div>
     );
   }
   if (!result) {
     return (
-      <Panel title={t("resultTitle")}>
-        <div className="flex flex-col items-center gap-3 py-8 text-center">
-          <MascotEmpty />
-          <p className="text-sm text-[var(--color-text-muted)]">{t("emptyResult")}</p>
-        </div>
-      </Panel>
+      <div className="space-y-3">
+        <Panel title={t("resultTitle")}>
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <MascotEmpty />
+            <p className="text-sm text-[var(--color-text-muted)]">{t("emptyResult")}</p>
+          </div>
+        </Panel>
+        <GenerationErrorNotice error={generationError} />
+      </div>
     );
   }
 
   const singleImage = result.images.length === 1;
 
   return (
-    <Panel title={t("resultTitle")} subtitle={t("imagesCount", { count: result.images.length })}>
-      <div className={`grid grid-cols-1 gap-3 ${singleImage ? "" : "sm:grid-cols-2"}`}>
-        {result.images.map((img, i) => (
-          <figure
-            key={i}
-            className={`overflow-hidden rounded-md border border-[var(--color-border)] bg-black/40 ${
-              singleImage ? "mx-auto w-full max-w-5xl" : ""
-            }`}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`data:${img.mimeType};base64,${img.data}`}
-              alt={t("generatedAlt", { n: i + 1 })}
-              onClick={() => setZoomed(i)}
-              className={`block w-full cursor-zoom-in object-contain transition hover:opacity-95 ${
-                singleImage ? "max-h-[72vh]" : ""
+    <div className="space-y-3">
+      <Panel title={t("resultTitle")} subtitle={t("imagesCount", { count: result.images.length })}>
+        <div className={`grid grid-cols-1 gap-3 ${singleImage ? "" : "sm:grid-cols-2"}`}>
+          {result.images.map((img, i) => (
+            <figure
+              key={i}
+              className={`overflow-hidden rounded-md border border-[var(--color-border)] bg-black/40 ${
+                singleImage ? "mx-auto w-full max-w-5xl" : ""
               }`}
-            />
-            <figcaption className="flex items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2 text-xs">
-              <button
-                type="button"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`data:${img.mimeType};base64,${img.data}`}
+                alt={t("generatedAlt", { n: i + 1 })}
                 onClick={() => setZoomed(i)}
-                className="text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
-              >
-                {t("enlarge")}
-              </button>
-              <a
-                href={`data:${img.mimeType};base64,${img.data}`}
-                download={`miniaitura-${result.requestId}-${i + 1}.png`}
-                className="font-medium text-[var(--color-accent)] hover:underline"
-              >
-                {t("download")}
-              </a>
-            </figcaption>
-          </figure>
-        ))}
-      </div>
-      {isPro && (
-        <PublishControls result={result} authToken={authToken} publishMsg={publishMsg} onPublishMsg={onPublishMsg} />
-      )}
-      {zoomed !== null && (
-        <ResultLightbox
-          images={result.images}
-          index={zoomed}
-          requestId={result.requestId}
-          onClose={() => setZoomed(null)}
-        />
-      )}
-    </Panel>
+                className={`block w-full cursor-zoom-in object-contain transition hover:opacity-95 ${
+                  singleImage ? "max-h-[72vh]" : ""
+                }`}
+              />
+              <figcaption className="flex items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-bg-panel-2)] px-3 py-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setZoomed(i)}
+                  className="text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
+                >
+                  {t("enlarge")}
+                </button>
+                <a
+                  href={`data:${img.mimeType};base64,${img.data}`}
+                  download={`miniaitura-${result.requestId}-${i + 1}.png`}
+                  className="font-medium text-[var(--color-accent)] hover:underline"
+                >
+                  {t("download")}
+                </a>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+        {isPro && (
+          <PublishControls result={result} authToken={authToken} publishMsg={publishMsg} onPublishMsg={onPublishMsg} />
+        )}
+        {zoomed !== null && (
+          <ResultLightbox
+            images={result.images}
+            index={zoomed}
+            requestId={result.requestId}
+            onClose={() => setZoomed(null)}
+          />
+        )}
+      </Panel>
+      <GenerationErrorNotice error={generationError} />
+    </div>
+  );
+}
+
+function GenerationErrorNotice({ error }: { error: string | null }) {
+  if (!error) return null;
+  return (
+    <div className="rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-3 text-xs text-[var(--color-text-primary)]">
+      {error}
+    </div>
   );
 }
 

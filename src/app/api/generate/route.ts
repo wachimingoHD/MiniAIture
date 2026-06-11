@@ -490,6 +490,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
                 styleId: styleMeta.styleId,
                 stylePrompt: stylePromptForRecord,
                 imageUrl: item.publicUrl,
+                aspectRatio: params.aspect_ratio,
                 provider: genProvider,
                 resolution: genResolution,
                 mode: genMode,

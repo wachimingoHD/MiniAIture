@@ -20,7 +20,9 @@ import { Link } from "@/i18n/navigation";
 export interface MarqueeThumb {
   id: string;
   imageUrl?: string;
+  title?: string;
   prompt?: string;
+  contentPrompt?: string;
   stylePrompt?: string;
   authorName?: string;
 }
@@ -65,6 +67,7 @@ function Carrier({
   onSelect,
   stopped,
   onHover,
+  onVerticalImage,
 }: {
   item: MarqueeThumb;
   index: number;
@@ -72,10 +75,13 @@ function Carrier({
   onSelect: (t: MarqueeThumb) => void;
   stopped: boolean;
   onHover: (i: number | null) => void;
+  onVerticalImage: (id: string) => void;
 }) {
   const t = useTranslations("marquee");
   const variant = VARIANTS[index % VARIANTS.length];
   const clickable = !!item.imageUrl;
+  const title = item.title?.trim() || item.prompt?.trim() || undefined;
+  const altText = title ?? item.contentPrompt ?? t("publicThumbAlt");
 
   const thumb = (
     <div className="aspect-video w-full overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-panel)] shadow-[0_12px_30px_-14px_rgba(60,50,30,0.35)] transition duration-200 group-hover:scale-[1.06] group-hover:border-[var(--color-accent)] group-hover:shadow-[0_10px_44px_-6px_rgba(124,110,240,0.55)]">
@@ -83,8 +89,12 @@ function Carrier({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={item.imageUrl}
-          alt={item.prompt?.slice(0, 80) ?? t("publicThumbAlt")}
+          alt={altText.slice(0, 80)}
           loading="lazy"
+          onLoad={(e) => {
+            const img = e.currentTarget;
+            if (img.naturalHeight > img.naturalWidth) onVerticalImage(item.id);
+          }}
           className="h-full w-full object-cover"
         />
       ) : (
@@ -104,7 +114,7 @@ function Carrier({
           type="button"
           onClick={() => onSelect(item)}
           className="block w-full cursor-pointer"
-          aria-label={t("viewThumb", { title: item.prompt?.slice(0, 60) ?? "" })}
+          aria-label={t("viewThumb", { title: altText.slice(0, 60) })}
         >
           {thumb}
         </button>
@@ -127,10 +137,12 @@ function Row({
   items,
   reverse,
   onSelect,
+  onVerticalImage,
 }: {
   items: MarqueeThumb[];
   reverse: boolean;
   onSelect: (t: MarqueeThumb) => void;
+  onVerticalImage: (id: string) => void;
 }) {
   // Estado de hover (qué tarjeta tiene el ratón) → controla la pausa por clase.
   // Es solo estado de interacción, no anima nada por JS.
@@ -153,6 +165,7 @@ function Row({
             onSelect={onSelect}
             stopped={i === hovered}
             onHover={setHovered}
+            onVerticalImage={onVerticalImage}
           />
         ))}
       </div>
@@ -192,6 +205,8 @@ function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => vo
   }, [onClose]);
 
   if (!mounted) return null;
+  const title = thumb.title?.trim() || thumb.prompt?.trim() || undefined;
+  const content = thumb.contentPrompt?.trim() || undefined;
 
   // Portal a <body>: el marquee vive dentro de una sección con `transform`
   // (.on-scroll-rise → @keyframes rise-in), lo que convierte a esa sección en el
@@ -214,7 +229,7 @@ function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => vo
         <div className="aspect-video w-full bg-[var(--color-bg-panel-2)]">
           {thumb.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={thumb.imageUrl} alt={thumb.prompt ?? t("thumbAlt")} className="h-full w-full object-contain" />
+            <img src={thumb.imageUrl} alt={title ?? content ?? t("thumbAlt")} className="h-full w-full object-contain" />
           ) : (
             <div className="h-full w-full bg-gradient-to-br from-[var(--color-pastel-purple)] via-[var(--color-pastel-blue)] to-[var(--color-pastel-green)]" />
           )}
@@ -222,7 +237,18 @@ function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => vo
 
         {/* Detalles */}
         <div className="p-5">
-          {thumb.prompt && <h3 className="font-display text-lg font-bold">{thumb.prompt}</h3>}
+          {title && <h3 className="font-display text-lg font-bold">{title}</h3>}
+
+          {content && (
+            <>
+              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+                {t("contentUsed")}
+              </p>
+              <p className="mt-1 whitespace-pre-wrap rounded-lg bg-[var(--color-bg-panel-2)] p-3 text-sm text-[var(--color-text-secondary)]">
+                {content}
+              </p>
+            </>
+          )}
 
           <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
             {t("styleUsed")}
@@ -252,9 +278,20 @@ function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => vo
 
 export function PenguinThumbnailMarquee({ items }: { items: MarqueeThumb[] }) {
   const [selected, setSelected] = useState<MarqueeThumb | null>(null);
+  const [verticalIds, setVerticalIds] = useState<Set<string>>(() => new Set());
+  const visibleItems = items.filter((item) => !verticalIds.has(item.id));
 
   const base: MarqueeThumb[] =
-    items.length > 0 ? items : Array.from({ length: 6 }, (_, i) => ({ id: `placeholder-${i}` }));
+    visibleItems.length > 0 ? visibleItems : Array.from({ length: 6 }, (_, i) => ({ id: `placeholder-${i}` }));
+  const handleVerticalImage = (id: string) => {
+    setVerticalIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+    setSelected((cur) => (cur?.id === id ? null : cur));
+  };
 
   // 24 ítems por grupo: cada copia supera con holgura el ancho de pantalla
   // incluso con bastante zoom-out, evitando que se vea el corte al reciclar.
@@ -266,8 +303,8 @@ export function PenguinThumbnailMarquee({ items }: { items: MarqueeThumb[] }) {
     <div className="flex flex-col gap-6">
       {/* Animaciones generadas desde FRAME_SEQUENCES (una vez). */}
       <style dangerouslySetInnerHTML={{ __html: VARIANT_CSS }} />
-      <Row items={top} reverse={false} onSelect={setSelected} />
-      <Row items={bottom} reverse onSelect={setSelected} />
+      <Row items={top} reverse={false} onSelect={setSelected} onVerticalImage={handleVerticalImage} />
+      <Row items={bottom} reverse onSelect={setSelected} onVerticalImage={handleVerticalImage} />
       {selected && <ThumbModal thumb={selected} onClose={() => setSelected(null)} />}
     </div>
   );
