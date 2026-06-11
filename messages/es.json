@@ -2,8 +2,8 @@
   "metadata": {
     "title": "MiniAItura | Miniaturas de YouTube con IA",
     "titleTemplate": "MiniAItura | %s",
-    "description": "Describe tu vídeo y nuestra IA genera la miniatura perfecta para tu nicho. Miniaturas de YouTube que consiguen clics, sin saber diseñar.",
-    "ogDescription": "Describe tu vídeo y la IA genera la miniatura perfecta para tu nicho.",
+    "description": "Describe tu vídeo y nuestra IA genera la miniatura perfecta para tu nicho. Sube tu foto y sal tú en la miniatura, con tu cara real. Sin saber diseñar.",
+    "ogDescription": "Describe tu vídeo y nuestra IA genera la miniatura perfecta para tu nicho. Sube tu foto y sal tú en la miniatura, con tu cara real. Sin saber diseñar.",
     "twitterDescription": "Genera miniaturas profesionales de YouTube con IA en segundos.",
     "orgDescription": "Generador de miniaturas de YouTube con inteligencia artificial.",
     "keywords": "miniaturas YouTube | generador de miniaturas IA | thumbnails YouTube | MiniAItura",
@@ -45,10 +45,12 @@
     "anonymous": "Anónimo"
   },
   "landing": {
-    "subtitle": "Crea miniaturas de YouTube increíbles con IA. Describe tu vídeo y deja que las hagan por ti.",
+    "subtitle": "Describe a la IA el contenido y estilo de tu vídeo.",
     "ctaPrimary": "Crea tu miniatura gratis",
     "ctaSecondary": "Explora la galería pública",
-    "communitySection": "Últimas generaciones de la comunidad"
+    "communitySection": "Últimas generaciones de la comunidad",
+    "subtitle2": "Añade imágenes de referencia y la IA hace el resto: composición y diseño.",
+    "subtitle3": "O explora lo que ya ha creado la comunidad."
   },
   "marquee": {
     "publicThumbAlt": "Miniatura pública",
@@ -65,7 +67,7 @@
   "pricing": {
     "headerSubtitle": "Planes y precios",
     "title": "Planes y precios",
-    "subtitle": "Elige el plan que mejor encaja con tu ritmo de creación de miniaturas.",
+    "subtitle": "Elige el plan que mejor encaja con tu ritmo. Una miniatura cuesta unos 100 créditos (de 75 a 150 según opciones).",
     "planLabel": "Plan: {plan}",
     "planUnknown": "desconocido",
     "subscriptionSuffix": " - Suscripción: {status}",
@@ -106,9 +108,9 @@
   "galleryPublic": {
     "meta": {
       "title": "Galería de miniaturas de YouTube creadas por la comunidad",
-      "description": "Miniaturas de YouTube generadas con IA por la comunidad de MiniAItura. Explora estilos por nicho y úsalos en tus propias miniaturas.",
+      "description": "Miniaturas de YouTube reales creadas por la comunidad de MiniAItura: composiciones profesionales por nicho, con caras reales a partir de imágenes de referencia. Copia el estilo de cualquiera y úsalo en la tuya.",
       "ogTitle": "Galería de miniaturas de la comunidad | MiniAItura",
-      "ogDescription": "Explora miniaturas de YouTube generadas con IA por la comunidad."
+      "ogDescription": "Miniaturas profesionales creadas por la comunidad: explora estilos por nicho y reutilízalos en las tuyas."
     },
     "headerSubtitle": "Galería de la comunidad",
     "title": "Galería de miniaturas creadas por la comunidad",

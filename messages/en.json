@@ -2,8 +2,8 @@
   "metadata": {
     "title": "MiniAItura | AI YouTube Thumbnails",
     "titleTemplate": "MiniAItura | %s",
-    "description": "Describe your video and our AI generates the perfect thumbnail for your niche. Click-worthy YouTube thumbnails, no design skills needed.",
-    "ogDescription": "Describe your video and AI generates the perfect thumbnail for your niche.",
+    "description": "Describe your video and our AI generates the perfect thumbnail for your niche. Upload your photo to star in it with your real face. No design skills needed.",
+    "ogDescription": "Describe your video and our AI generates the perfect thumbnail for your niche. Upload your photo to star in it with your real face. No design skills needed.",
     "twitterDescription": "Generate professional YouTube thumbnails with AI in seconds.",
     "orgDescription": "AI-powered YouTube thumbnail generator.",
     "keywords": "YouTube thumbnails | AI thumbnail generator | YouTube thumbnail maker | MiniAItura",
@@ -45,10 +45,12 @@
     "anonymous": "Anonymous"
   },
   "landing": {
-    "subtitle": "Create amazing YouTube thumbnails with AI. Describe your video and let it do the work for you.",
+    "subtitle": "Describe your video's content and style to the AI.",
     "ctaPrimary": "Create your thumbnail for free",
     "ctaSecondary": "Explore the public gallery",
-    "communitySection": "Latest community generations"
+    "communitySection": "Latest community generations",
+    "subtitle2": "Add reference images and the AI does the rest: composition and design.",
+    "subtitle3": "Or explore what the community has already created."
   },
   "marquee": {
     "publicThumbAlt": "Public thumbnail",
@@ -65,7 +67,7 @@
   "pricing": {
     "headerSubtitle": "Plans & pricing",
     "title": "Plans & pricing",
-    "subtitle": "Choose the plan that best fits your thumbnail creation pace.",
+    "subtitle": "Pick the plan that fits your pace. One thumbnail costs about 100 credits (75–150 depending on options).",
     "planLabel": "Plan: {plan}",
     "planUnknown": "unknown",
     "subscriptionSuffix": " - Subscription: {status}",
@@ -106,9 +108,9 @@
   "galleryPublic": {
     "meta": {
       "title": "Gallery of community-made YouTube thumbnails",
-      "description": "YouTube thumbnails generated with AI by the MiniAItura community. Explore styles by niche and use them in your own thumbnails.",
+      "description": "Real YouTube thumbnails created by the MiniAItura community: professional compositions by niche, featuring real faces from reference images. Copy any style and use it in your own.",
       "ogTitle": "Community thumbnail gallery | MiniAItura",
-      "ogDescription": "Explore YouTube thumbnails generated with AI by the community."
+      "ogDescription": "Professional thumbnails created by the community: browse styles by niche and reuse them in yours."
     },
     "headerSubtitle": "Community gallery",
     "title": "Gallery of community-made thumbnails",

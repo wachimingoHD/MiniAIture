@@ -126,9 +126,12 @@ export default async function LandingPage({
         <h1 className="font-display text-[clamp(2.25rem,10vw,8.5rem)] font-extrabold leading-[1.05] tracking-tight">
           Mini<span className="text-[var(--color-accent)]">AI</span>tura
         </h1>
-        <p className="mt-5 max-w-xl text-lg text-[var(--color-text-secondary)] md:text-xl">
-          {t("subtitle")}
-        </p>
+        {/* Subtítulo en 3 líneas-frase (en desktop cada una cabe en su línea). */}
+        <div className="mt-5 max-w-2xl space-y-1 text-base text-[var(--color-text-secondary)] md:text-lg">
+          <p>{t("subtitle")}</p>
+          <p>{t("subtitle2")}</p>
+          <p className="text-[var(--color-text-muted)]">{t("subtitle3")}</p>
+        </div>
 
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
           <Link
