@@ -149,7 +149,7 @@ const es: Record<LegalSlug, LegalDocument> = {
         paragraphs: [
           "Las miniaturas que generes son tuyas: puedes usarlas para lo que quieras, incluido el uso comercial, bajo tu responsabilidad.",
           "Eres el único responsable del contenido que generes, de las imágenes de referencia que subas y de lo que publiques en la galería, así como de tener los derechos necesarios sobre ello. No revisamos el contenido de los usuarios antes de publicarse y no respondemos de él; somos intermediarios y retiraremos cualquier contenido ilícito en cuanto tengamos conocimiento (puedes señalarlo con el botón de reporte o por correo).",
-          "Si publicas una miniatura en la galería pública, aceptas que se muestre públicamente en el sitio (incluida la portada) y que otros usuarios puedan reutilizar su contenido y estilo como punto de partida para sus creaciones. Puedes despublicarla cuando quieras.",
+          "Si publicas una miniatura en la galería pública, aceptas que se muestre públicamente en el sitio (incluida la portada) y que otros usuarios puedan reutilizar su contenido y estilo como punto de partida para sus creaciones. Puedes despublicarla cuando quieras; ten en cuenta que los buscadores y cachés de terceros pueden tardar un tiempo en dejar de mostrar contenido que estuvo publicado.",
         ],
       },
       {
@@ -325,7 +325,7 @@ const en: Record<LegalSlug, LegalDocument> = {
         paragraphs: [
           "The thumbnails you generate are yours: use them for anything you like, including commercially, at your own responsibility.",
           "You are solely responsible for the content you generate, the reference images you upload and what you publish to the gallery, as well as for holding the necessary rights over it. We do not review user content before it is published and are not liable for it; we act as intermediaries and will remove any unlawful content as soon as we become aware of it (you can flag it with the report button or by email).",
-          "If you publish a thumbnail to the public gallery, you accept that it is displayed publicly on the site (including the home page) and that other users may reuse its content and style as a starting point for their own creations. You can unpublish it at any time.",
+          "If you publish a thumbnail to the public gallery, you accept that it is displayed publicly on the site (including the home page) and that other users may reuse its content and style as a starting point for their own creations. You can unpublish it at any time; note that search engines and third-party caches may keep showing previously published content for a while.",
         ],
       },
       {

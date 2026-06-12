@@ -226,7 +226,7 @@
     "bullet1": "Your thumbnail will be <strong>publicly visible</strong> to anyone.",
     "bullet2": "Others will be able to <strong>copy your content and your style</strong> (separately or together) for their own thumbnails.",
     "bullet3": "You'll appear as the <strong>author</strong> with your public name.",
-    "footer": "You can make it private again anytime from your gallery."
+    "footer": "You can make it private again anytime from your gallery. Keep in mind that anything published on the internet may remain in search engines and third-party caches for a while."
   },
   "publishModal": {
     "title": "Publish to the community",
