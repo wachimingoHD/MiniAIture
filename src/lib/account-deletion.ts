@@ -54,6 +54,17 @@ export async function executeAccountDeletion(
   const snap = await userRef.get();
   const userDoc = snap.exists ? (snap.data() as UserDocument) : null;
 
+  // Re-verificación: el doc debe seguir con un borrado programado YA vencido.
+  // Cubre la carrera "el usuario inicia sesión (cancela la solicitud) justo
+  // cuando el cron arranca con la lista de vencidos ya leída": sin esto se
+  // borraba la cuenta de alguien que acababa de arrepentirse.
+  if (userDoc) {
+    const due = userDoc.deletionScheduledAt && Date.parse(userDoc.deletionScheduledAt) <= Date.now();
+    if (!due) {
+      return { ok: false, authDeleted: false, error: "deletion_no_longer_scheduled" };
+    }
+  }
+
   // 1) Suscripción: cancelar YA en Stripe. Si Stripe falla, abortamos: el cron
   // reintentará mañana (el doc conserva su deletionScheduledAt vencido).
   // NO ajustamos aquí el contador de referidos: la cancelación dispara el

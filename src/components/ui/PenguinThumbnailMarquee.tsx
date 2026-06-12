@@ -12,7 +12,7 @@
 //   ancho de pantalla (no se ve el corte ni con zoom-out).
 // =============================================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
@@ -134,13 +134,21 @@ function Carrier({
 }
 
 function Row({
-  items,
+  initialItems,
   reverse,
+  verticalIds,
+  takeQueued,
+  onLoopComplete,
   onSelect,
   onVerticalImage,
 }: {
-  items: MarqueeThumb[];
+  initialItems: MarqueeThumb[];
   reverse: boolean;
+  verticalIds: Set<string>;
+  /** Drena los ítems en cola para esta fila (lotes extra ya deduplicados). */
+  takeQueued: () => MarqueeThumb[];
+  /** Se dispara al completar una vuelta entera: el padre decide pedir más. */
+  onLoopComplete: () => void;
   onSelect: (t: MarqueeThumb) => void;
   onVerticalImage: (id: string) => void;
 }) {
@@ -148,12 +156,35 @@ function Row({
   // Es solo estado de interacción, no anima nada por JS.
   const [hovered, setHovered] = useState<number | null>(null);
 
+  // Lista viva de la fila: crece con los lotes extra, pero SOLO en el límite
+  // de vuelta (transform = 0), donde alargar el track no produce saltos.
+  const [list, setList] = useState(initialItems);
+
+  const visible = list.filter((it) => !verticalIds.has(it.id));
+  const padded = fillTo(visible.length > 0 ? visible : initialItems, 24);
+  // La velocidad original era 80 s / 24 ítems; al crecer la lista, la duración
+  // escala en proporción para que el desplazamiento no se acelere.
+  const durationSeconds = Math.max(20, Math.round(padded.length * (80 / 24)));
+
+  const handleIteration = (e: React.AnimationEvent<HTMLDivElement>) => {
+    // Los sprites de los pingüinos también burbujean animationiteration; solo
+    // nos interesa el keyframe del propio track.
+    if (e.animationName !== "marquee") return;
+    const extra = takeQueued();
+    if (extra.length > 0) setList((prev) => [...prev, ...extra]);
+    onLoopComplete();
+  };
+
   // Duplicamos para un bucle sin costuras (el track mide el doble y va a -50%).
-  const loop = [...items, ...items];
+  const loop = [...padded, ...padded];
   return (
     // py-10 deja sitio para el glow/escala del hover (que si no, recortaría overflow).
     <div className="relative w-full overflow-hidden py-10">
-      <div className={`pmarquee flex w-max ${reverse ? "reverse" : ""} ${hovered !== null ? "is-paused" : ""}`}>
+      <div
+        className={`pmarquee flex w-max ${reverse ? "reverse" : ""} ${hovered !== null ? "is-paused" : ""}`}
+        style={{ animationDuration: `${durationSeconds}s` }}
+        onAnimationIteration={handleIteration}
+      >
         {loop.map((it, i) => (
           // reverse (hacia la derecha) → mira a la derecha (sin flip).
           // !reverse (hacia la izquierda) → flip para ir de cabeza.
@@ -276,13 +307,57 @@ function ThumbModal({ thumb, onClose }: { thumb: MarqueeThumb; onClose: () => vo
   );
 }
 
+// Tope de lotes aleatorios por visita (1 inicial del SSR + 3 bajo demanda).
+// Las filas solo piden material nuevo al COMPLETAR una vuelta: un visitante
+// que rebota no genera ninguna lectura extra de Firestore.
+const MAX_MARQUEE_BATCHES = 4;
+
 export function PenguinThumbnailMarquee({ items }: { items: MarqueeThumb[] }) {
+  const tCommon = useTranslations("common");
   const [selected, setSelected] = useState<MarqueeThumb | null>(null);
   const [verticalIds, setVerticalIds] = useState<Set<string>>(() => new Set());
-  const visibleItems = items.filter((item) => !verticalIds.has(item.id));
+
+  // ---- Lotes extra (deduplicados): colas por fila, drenadas en fin de vuelta.
+  const seenIdsRef = useRef<Set<string>>(new Set(items.map((i) => i.id)));
+  const batchesRef = useRef(1);
+  const fetchingRef = useRef(false);
+  const exhaustedRef = useRef(false);
+  const queuesRef = useRef<{ top: MarqueeThumb[]; bottom: MarqueeThumb[] }>({ top: [], bottom: [] });
+
+  const requestMoreThumbs = () => {
+    if (fetchingRef.current || exhaustedRef.current || batchesRef.current >= MAX_MARQUEE_BATCHES) return;
+    fetchingRef.current = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/gallery/marquee");
+        if (!res.ok) return;
+        const data = (await res.json()) as { items?: MarqueeThumb[] };
+        const fresh = (data.items ?? []).filter(
+          (it) => it.id && it.imageUrl && !seenIdsRef.current.has(it.id),
+        );
+        if (fresh.length === 0) {
+          // La galería no da más material único: las filas repiten lo que tienen.
+          exhaustedRef.current = true;
+          return;
+        }
+        for (const it of fresh) {
+          seenIdsRef.current.add(it.id);
+          if (!it.authorName) it.authorName = tCommon("anonymous");
+        }
+        const splitAt = Math.ceil(fresh.length / 2);
+        queuesRef.current.top.push(...fresh.slice(0, splitAt));
+        queuesRef.current.bottom.push(...fresh.slice(splitAt));
+        batchesRef.current += 1;
+      } catch {
+        /* sin red: el carrusel sigue con lo que tiene */
+      } finally {
+        fetchingRef.current = false;
+      }
+    })();
+  };
 
   const base: MarqueeThumb[] =
-    visibleItems.length > 0 ? visibleItems : Array.from({ length: 6 }, (_, i) => ({ id: `placeholder-${i}` }));
+    items.length > 0 ? items : Array.from({ length: 6 }, (_, i) => ({ id: `placeholder-${i}` }));
   const handleVerticalImage = (id: string) => {
     setVerticalIds((prev) => {
       if (prev.has(id)) return prev;
@@ -301,17 +376,28 @@ export function PenguinThumbnailMarquee({ items }: { items: MarqueeThumb[] }) {
   const topHalf = base.slice(0, mid);
   const bottomHalf = base.length > 1 ? base.slice(mid) : base;
 
-  // 24 ítems por grupo: cada copia supera con holgura el ancho de pantalla
-  // incluso con bastante zoom-out, evitando que se vea el corte al reciclar.
-  const top = fillTo(topHalf, 24);
-  const bottom = fillTo(bottomHalf, 24);
-
   return (
     <div className="flex flex-col gap-6">
       {/* Animaciones generadas desde FRAME_SEQUENCES (una vez). */}
       <style dangerouslySetInnerHTML={{ __html: VARIANT_CSS }} />
-      <Row items={top} reverse={false} onSelect={setSelected} onVerticalImage={handleVerticalImage} />
-      <Row items={bottom} reverse onSelect={setSelected} onVerticalImage={handleVerticalImage} />
+      <Row
+        initialItems={topHalf}
+        reverse={false}
+        verticalIds={verticalIds}
+        takeQueued={() => queuesRef.current.top.splice(0)}
+        onLoopComplete={requestMoreThumbs}
+        onSelect={setSelected}
+        onVerticalImage={handleVerticalImage}
+      />
+      <Row
+        initialItems={bottomHalf}
+        reverse
+        verticalIds={verticalIds}
+        takeQueued={() => queuesRef.current.bottom.splice(0)}
+        onLoopComplete={requestMoreThumbs}
+        onSelect={setSelected}
+        onVerticalImage={handleVerticalImage}
+      />
       {selected && <ThumbModal thumb={selected} onClose={() => setSelected(null)} />}
     </div>
   );

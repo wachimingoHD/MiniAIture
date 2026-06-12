@@ -40,14 +40,30 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const scheduledAt = new Date(Date.now() + DELETION_DELAY_MS).toISOString();
   const userRef = db.collection(USERS_COLLECTION).doc(user.uid);
-  const snap = await userRef.get();
 
-  if (!snap.exists) {
+  // Transacción: la comprobación de la suscripción y la escritura del schedule
+  // son ATÓMICAS. Sin esto, una reactivación de la suscripción desde otra
+  // pestaña podía colarse entre la lectura y la escritura, dejando una sub que
+  // renueva con un borrado programado (cobro dentro de la ventana de espera).
+  let blocked = false;
+  let missing = false;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    if (!snap.exists) {
+      missing = true;
+      return;
+    }
+    if (hasRenewingStripeSubscription(snap.data() as UserDocument)) {
+      blocked = true;
+      return;
+    }
+    tx.update(userRef, { deletionScheduledAt: scheduledAt });
+  });
+
+  if (missing) {
     return NextResponse.json({ ok: true, scheduledAt, note: "no_user_doc" });
   }
-
-  const userDoc = snap.data() as UserDocument;
-  if (hasRenewingStripeSubscription(userDoc)) {
+  if (blocked) {
     return NextResponse.json(
       {
         error: "Cancela tu suscripción PRO antes de solicitar el borrado de la cuenta.",
@@ -55,14 +71,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       },
       { status: 409 },
     );
-  }
-
-  try {
-    // update() y no set(merge): si el doc desaparece entre el get() y esta
-    // escritura, no hay nada que programar.
-    await userRef.update({ deletionScheduledAt: scheduledAt });
-  } catch {
-    return NextResponse.json({ ok: true, scheduledAt, note: "no_user_doc" });
   }
 
   return NextResponse.json({ ok: true, scheduledAt });
